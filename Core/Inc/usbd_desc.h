@@ -1,0 +1,154 @@
+/* USER CODE BEGIN Header */
+/**
+  ******************************************************************************
+  * @file           : usbd_desc.c
+  * @version        : v3.0_Cube
+  * @brief          : Header for usbd_conf.c file.
+  ******************************************************************************
+  * @attention
+  *
+  * <h2><center>&copy; Copyright (c) 2021 STMicroelectronics.
+  * All rights reserved.</center></h2>
+  *
+  * This software component is licensed by ST under Ultimate Liberty license
+  * SLA0044, the "License"; You may not use this file except in compliance with
+  * the License. You may obtain a copy of the License at:
+  *                             www.st.com/SLA0044
+  *
+  ******************************************************************************
+  */
+/* USER CODE END Header */
+
+/* Define to prevent recursive inclusion -------------------------------------*/
+#ifndef __USBD_DESC__C__
+#define __USBD_DESC__C__
+
+#ifdef __cplusplus
+ extern "C" {
+#endif
+
+/* Includes ------------------------------------------------------------------*/
+#include "usbd_def.h"
+
+/* USER CODE BEGIN INCLUDE */
+
+/* USER CODE END INCLUDE */
+
+/** @addtogroup STM32_USB_OTG_DEVICE_LIBRARY
+  * @{
+  */
+
+/** @defgroup USBD_DESC USBD_DESC
+  * @brief Usb device descriptors module.
+  * @{
+  */
+
+/** @defgroup USBD_DESC_Exported_Constants USBD_DESC_Exported_Constants
+  * @brief Constants.
+  * @{
+  */
+#define         DEVICE_ID1          (UID_BASE)
+#define         DEVICE_ID2          (UID_BASE + 0x4)
+#define         DEVICE_ID3          (UID_BASE + 0x8)
+
+#define         USB_SIZ_STRING_SERIAL       0x1A
+
+/* USER CODE BEGIN EXPORTED_CONSTANTS */
+
+/* USER CODE END EXPORTED_CONSTANTS */
+
+/**
+  * @}
+  */
+
+/** @defgroup USBD_DESC_Exported_Defines USBD_DESC_Exported_Defines
+  * @brief Defines.
+  * @{
+  */
+
+/* USER CODE BEGIN EXPORTED_DEFINES */
+#define USBD_VID                     0x1D50
+#define USBD_PID_FS                  0x606F
+#define USBD_LANGID_STRING           1033
+#define USBD_CONFIGURATION_STRING_FS (uint8_t*) "gs_usb"
+#define USBD_INTERFACE_STRING_FS     (uint8_t*) "gs_usb interface"
+
+#define USBD_PRODUCT_STRING_FS      (uint8_t*) "canned pi gs_usb"
+#define USBD_MANUFACTURER_STRING    (uint8_t*) ""
+#define DFU_INTERFACE_STRING_FS     (uint8_t*) "canned pi firmware upgrade interface"
+
+/* USER CODE END EXPORTED_DEFINES */
+
+/**
+  * @}
+  */
+
+/** @defgroup USBD_DESC_Exported_TypesDefinitions USBD_DESC_Exported_TypesDefinitions
+  * @brief Types.
+  * @{
+  */
+
+/* USER CODE BEGIN EXPORTED_TYPES */
+
+/* USER CODE END EXPORTED_TYPES */
+
+/**
+  * @}
+  */
+
+/** @defgroup USBD_DESC_Exported_Macros USBD_DESC_Exported_Macros
+  * @brief Aliases.
+  * @{
+  */
+
+/* USER CODE BEGIN EXPORTED_MACRO */
+
+/* USER CODE END EXPORTED_MACRO */
+
+/**
+  * @}
+  */
+
+/** @defgroup USBD_DESC_Exported_Variables USBD_DESC_Exported_Variables
+  * @brief Public variables.
+  * @{
+  */
+
+extern const USBD_DescriptorsTypeDef FS_Desc;
+
+/* USER CODE BEGIN EXPORTED_VARIABLES */
+extern uint8_t USBD_DescBuf[USBD_MAX_STR_DESC_SIZ];
+/* USER CODE END EXPORTED_VARIABLES */
+
+/**
+  * @}
+  */
+
+/** @defgroup USBD_DESC_Exported_FunctionsPrototype USBD_DESC_Exported_FunctionsPrototype
+  * @brief Public functions declaration.
+  * @{
+  */
+
+/* USER CODE BEGIN EXPORTED_FUNCTIONS */
+
+/* USER CODE END EXPORTED_FUNCTIONS */
+
+/**
+  * @}
+  */
+
+/**
+  * @}
+  */
+
+/**
+  * @}
+  */
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif /* __USBD_DESC__C__ */
+
+/************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/

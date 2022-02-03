@@ -1,0 +1,16 @@
+/Debug/
+/USB_Device/
+/.settings/
+/.vscode/
+/build/
+*.o
+*.d
+*.bin
+*.asmo
+*.elf
+*.launch
+*.scratch
+.mxproject
+*~
+.cache/
+compile_commands.json
