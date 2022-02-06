@@ -68,14 +68,13 @@
 
 /* USER CODE BEGIN EXPORTED_DEFINES */
 #define USBD_VID                     0x1D50
-#define USBD_PID_FS                  0x606F
 #define USBD_LANGID_STRING           1033
-#define USBD_CONFIGURATION_STRING_FS (uint8_t*) "gs_usb"
-#define USBD_INTERFACE_STRING_FS     (uint8_t*) "gs_usb interface"
-
-#define USBD_PRODUCT_STRING_FS      (uint8_t*) "canned pi gs_usb"
-#define USBD_MANUFACTURER_STRING    (uint8_t*) ""
-#define DFU_INTERFACE_STRING_FS     (uint8_t*) "canned pi firmware upgrade interface"
+#define USBD_MANUFACTURER_STRING     (uint8_t*) ""
+#define USBD_PID                     0x606F
+#define USBD_PRODUCT_STRING         (uint8_t*) "canned pi gs_usb"
+#define USBD_CONFIGURATION_STRING    (uint8_t*) "gs_usb"
+#define USBD_INTERFACE_STRING        (uint8_t*) "gs_usb interface"
+#define DFU_INTERFACE_STRING        (uint8_t*) "canned pi firmware upgrade interface"
 
 /* USER CODE END EXPORTED_DEFINES */
 
@@ -114,10 +113,10 @@
   * @{
   */
 
-extern const USBD_DescriptorsTypeDef FS_Desc;
+extern USBD_DescriptorsTypeDef FS_Desc;
 
 /* USER CODE BEGIN EXPORTED_VARIABLES */
-extern uint8_t USBD_DescBuf[USBD_MAX_STR_DESC_SIZ];
+
 /* USER CODE END EXPORTED_VARIABLES */
 
 /**

@@ -36,7 +36,7 @@ THE SOFTWARE.
 #define CAN_DATA_MAX_PACKET_SIZE    32  /* Endpoint IN & OUT Packet size */
 #define CAN_CMD_PACKET_SIZE         64  /* Control Endpoint Packet size */
 #define USB_CAN_CONFIG_DESC_SIZ     50
-#define NUM_CAN_CHANNEL             2
+#define NUM_CAN_CHANNEL             3
 #define USBD_GS_CAN_VENDOR_CODE     0x20
 #define DFU_INTERFACE_NUM           1
 #define DFU_INTERFACE_STR_INDEX     0xE0
@@ -51,6 +51,7 @@ typedef struct {
   USBD_SetupReqTypedef last_setup_request;
   struct gs_host_config host_config;
   struct gs_host_frame from_host_frame;
+  uint32_t can_clk_freq;
   FDCAN_HandleTypeDef *channels[NUM_CAN_CHANNEL];
   bool dfu_detach_requested;
   bool timestamps_enabled;

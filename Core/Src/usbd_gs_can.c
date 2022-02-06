@@ -3,6 +3,7 @@
 The MIT License (MIT)
 
 Copyright (c) 2016 Hubert Denkmair
+Copyright (c) 2022 Ryan Edwards (changes for STM32G4 and CAN-FD)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -37,6 +38,7 @@ THE SOFTWARE.
 
 extern osMessageQueueId_t queue_from_hostHandle;
 extern TIM_HandleTypeDef htim6;
+extern uint8_t USBD_StrDesc[USBD_MAX_STR_DESC_SIZ];
 
 static uint8_t USBD_GS_CAN_Start(USBD_HandleTypeDef *pdev, uint8_t cfgidx);
 static uint8_t USBD_GS_CAN_DeInit(USBD_HandleTypeDef *pdev, uint8_t cfgidx);
@@ -304,7 +306,7 @@ uint8_t USBD_GS_CAN_Init(USBD_HandleTypeDef *pdev)
   USBD_GS_CAN_HandleTypeDef *hcan = USBD_static_malloc(sizeof(USBD_GS_CAN_HandleTypeDef));
 
   assert_param(hcan);
-
+  hcan->can_clk_freq = HAL_RCCEx_GetPeriphCLKFreq(RCC_PERIPHCLK_FDCAN);
   //hcan->leds = leds;
   hcan->canfd_enabled = false;
   pdev->pClassData = hcan;
@@ -564,14 +566,14 @@ bool USBD_GS_CAN_CustomDeviceRequest(USBD_HandleTypeDef *pdev, USBD_SetupReqType
     switch (req->wIndex) {
 
       case 0x0004:
-        memcpy(USBD_DescBuf, USBD_MS_COMP_ID_FEATURE_DESC, sizeof(USBD_MS_COMP_ID_FEATURE_DESC));
-        USBD_CtlSendData(pdev, USBD_DescBuf, MIN(sizeof(USBD_MS_COMP_ID_FEATURE_DESC), req->wLength));
+        memcpy(USBD_StrDesc, USBD_MS_COMP_ID_FEATURE_DESC, sizeof(USBD_MS_COMP_ID_FEATURE_DESC));
+        USBD_CtlSendData(pdev, USBD_StrDesc, MIN(sizeof(USBD_MS_COMP_ID_FEATURE_DESC), req->wLength));
         return true;
 
       case 0x0005:
         if (req->wValue==0) { // only return our GUID for interface #0
-          memcpy(USBD_DescBuf, USBD_MS_EXT_PROP_FEATURE_DESC, sizeof(USBD_MS_EXT_PROP_FEATURE_DESC));
-          USBD_CtlSendData(pdev, USBD_DescBuf, MIN(sizeof(USBD_MS_EXT_PROP_FEATURE_DESC), req->wLength));
+          memcpy(USBD_StrDesc, USBD_MS_EXT_PROP_FEATURE_DESC, sizeof(USBD_MS_EXT_PROP_FEATURE_DESC));
+          USBD_CtlSendData(pdev, USBD_StrDesc, MIN(sizeof(USBD_MS_EXT_PROP_FEATURE_DESC), req->wLength));
           return true;
         }
         break;
@@ -645,8 +647,8 @@ static uint8_t USBD_GS_CAN_DataOut(USBD_HandleTypeDef *pdev, uint8_t epnum) {
 static uint8_t *USBD_GS_CAN_GetCfgDesc(uint16_t *len)
 {
   *len = sizeof(USBD_GS_CAN_CfgDesc);
-  memcpy(USBD_DescBuf, USBD_GS_CAN_CfgDesc, sizeof(USBD_GS_CAN_CfgDesc));
-  return USBD_DescBuf;
+  memcpy(USBD_StrDesc, USBD_GS_CAN_CfgDesc, sizeof(USBD_GS_CAN_CfgDesc));
+  return USBD_StrDesc;
 }
 
 inline uint8_t USBD_GS_CAN_PrepareReceive(USBD_HandleTypeDef *pdev)
@@ -725,12 +727,12 @@ uint8_t *USBD_GS_CAN_GetStrDesc(USBD_HandleTypeDef *pdev, uint8_t index, uint16_
 
   switch (index) {
     case DFU_INTERFACE_STR_INDEX:
-      USBD_GetString(DFU_INTERFACE_STRING_FS, USBD_DescBuf, length);
-      return USBD_DescBuf;
+      USBD_GetString(DFU_INTERFACE_STRING, USBD_StrDesc, length);
+      return USBD_StrDesc;
     case 0xEE:
       *length = sizeof(USBD_GS_CAN_WINUSB_STR);
-      memcpy(USBD_DescBuf, USBD_GS_CAN_WINUSB_STR, sizeof(USBD_GS_CAN_WINUSB_STR));
-      return USBD_DescBuf;
+      memcpy(USBD_StrDesc, USBD_GS_CAN_WINUSB_STR, sizeof(USBD_GS_CAN_WINUSB_STR));
+      return USBD_StrDesc;
     default:
       *length = 0;
       USBD_CtlError(pdev, 0);
