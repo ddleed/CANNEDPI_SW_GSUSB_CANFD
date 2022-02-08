@@ -33,10 +33,10 @@ THE SOFTWARE.
 
 /* Define these here so they can be referenced in other files */
 
-#define CAN_DATA_MAX_PACKET_SIZE    32  /* Endpoint IN & OUT Packet size */
+#define CAN_DATA_MAX_PACKET_SIZE    64  /* Endpoint IN & OUT Packet size */
 #define CAN_CMD_PACKET_SIZE         64  /* Control Endpoint Packet size */
 #define USB_CAN_CONFIG_DESC_SIZ     50
-#define NUM_CAN_CHANNEL             3
+#define NUM_CAN_CHANNEL             2
 #define USBD_GS_CAN_VENDOR_CODE     0x20
 #define DFU_INTERFACE_NUM           1
 #define DFU_INTERFACE_STR_INDEX     0xE0
@@ -46,18 +46,15 @@ extern USBD_ClassTypeDef USBD_GS_CAN;
 #define CAN_CLOCK_SPEED 80000000
 
 typedef struct {
-  uint8_t ep0_buf[CAN_CMD_PACKET_SIZE];
+  uint8_t ep0_buf[128]; /* TODO: There is a memory overrun if set to 64 - need to find it - no overrun with 128 */
   __IO uint32_t TxState;
   USBD_SetupReqTypedef last_setup_request;
   struct gs_host_config host_config;
   struct gs_host_frame from_host_frame;
-  uint32_t can_clk_freq;
   FDCAN_HandleTypeDef *channels[NUM_CAN_CHANNEL];
   bool dfu_detach_requested;
-  bool timestamps_enabled;
   uint32_t sof_timestamp_us;
-  bool pad_pkts_to_max_pkt_size;
-  bool canfd_enabled;
+  bool canfd_enabled[NUM_CAN_CHANNEL];
 } USBD_GS_CAN_HandleTypeDef __attribute__ ((aligned (4)));
 
 uint8_t USBD_GS_CAN_Init(USBD_HandleTypeDef *pdev);//, queue_t *q_frame_pool, queue_t *q_from_host, led_data_t *leds);

@@ -233,7 +233,7 @@ static const uint8_t USBD_MS_EXT_PROP_FEATURE_DESC[] = {
 
 
 // device info
-static const struct gs_device_config USBD_GS_CAN_dconf = {
+static struct gs_device_config USBD_GS_CAN_dconf = {
   0, // reserved 1
   0, // reserved 2
   0, // reserved 3
@@ -243,13 +243,11 @@ static const struct gs_device_config USBD_GS_CAN_dconf = {
 };
 
 // bit timing constraints
-static const struct gs_device_bt_const USBD_GS_CAN_btconst = {
+static struct gs_device_bt_const USBD_GS_CAN_btconst = {
   GS_CAN_FEATURE_LISTEN_ONLY  // supported features
   | GS_CAN_FEATURE_LOOP_BACK
-  | GS_CAN_FEATURE_HW_TIMESTAMP
   | GS_CAN_FEATURE_IDENTIFY
   | GS_CAN_FEATURE_USER_ID
-  | GS_CAN_FEATURE_PAD_PKTS_TO_MAX_PKT_SIZE
   | GS_CAN_FEATURE_FD
   | GS_CAN_FEATURE_BT_CONST_EXT,
   CAN_CLOCK_SPEED, // can timing base clock
@@ -263,13 +261,11 @@ static const struct gs_device_bt_const USBD_GS_CAN_btconst = {
   1, // brp increment;
 };
 
-static const struct gs_device_bt_const_extended USBD_GS_CAN_btconst_extended = {
+static struct gs_device_bt_const_extended USBD_GS_CAN_btconst_extended = {
   GS_CAN_FEATURE_LISTEN_ONLY  // supported features
   | GS_CAN_FEATURE_LOOP_BACK
-  | GS_CAN_FEATURE_HW_TIMESTAMP
   | GS_CAN_FEATURE_IDENTIFY
   | GS_CAN_FEATURE_USER_ID
-  | GS_CAN_FEATURE_PAD_PKTS_TO_MAX_PKT_SIZE
   | GS_CAN_FEATURE_FD
   | GS_CAN_FEATURE_BT_CONST_EXT,
   CAN_CLOCK_SPEED, // can timing base clock
@@ -292,28 +288,17 @@ static const struct gs_device_bt_const_extended USBD_GS_CAN_btconst_extended = {
   1, // dbrp_inc;
 };
 
-/* It's unclear from the documentation, but it appears that the USB library is
- * not safely reentrant. It attempts to signal errors via return values if it is
- * reentered, but that code is not interrupt-safe and the error values are
- * silently ignored within the library in several cases. We'll just disable
- * interrupts at all entry points to be safe. Note that the callbacks are all
- * called from within the libary itself, either within the interrupt handler or
- * within other calls, which means the USB interrupt is already disabled and we
- * don't have any other interrupts to worry about. */
-
 uint8_t USBD_GS_CAN_Init(USBD_HandleTypeDef *pdev)
 {
   USBD_GS_CAN_HandleTypeDef *hcan = USBD_static_malloc(sizeof(USBD_GS_CAN_HandleTypeDef));
-
   assert_param(hcan);
-  hcan->can_clk_freq = HAL_RCCEx_GetPeriphCLKFreq(RCC_PERIPHCLK_FDCAN);
-  //hcan->leds = leds;
-  hcan->canfd_enabled = false;
+  /* dynamically provide the CAN clock value */
+  USBD_GS_CAN_btconst_extended.fclk_can = HAL_RCCEx_GetPeriphCLKFreq(RCC_PERIPHCLK_FDCAN);
+  USBD_GS_CAN_btconst.fclk_can = HAL_RCCEx_GetPeriphCLKFreq(RCC_PERIPHCLK_FDCAN);
+  hcan->TxState = 0;
   pdev->pClassData = hcan;
   return USBD_OK;
 }
-
-
 
 static uint8_t USBD_GS_CAN_Start(USBD_HandleTypeDef *pdev, uint8_t cfgidx)
 {
@@ -326,7 +311,6 @@ static uint8_t USBD_GS_CAN_Start(USBD_HandleTypeDef *pdev, uint8_t cfgidx)
   USBD_GS_CAN_PrepareReceive(pdev);
 
   return USBD_OK;
-
 }
 
 static uint8_t USBD_GS_CAN_DeInit(USBD_HandleTypeDef *pdev, uint8_t cfgidx)
@@ -377,13 +361,6 @@ uint8_t USBD_GS_CAN_GetChannelNumber(USBD_HandleTypeDef *pdev, FDCAN_HandleTypeD
   return channel;
 }
 
-/*
-static led_seq_step_t led_identify_seq[] = {
-    { .state = 0x01, .time_in_10ms = 10 },
-    { .state = 0x02, .time_in_10ms = 10 },
-    { .state = 0x00, .time_in_10ms = 0 }
-};
-*/
 static uint8_t USBD_GS_CAN_EP0_RxReady(USBD_HandleTypeDef *pdev) {
 
   USBD_GS_CAN_HandleTypeDef *hcan = (USBD_GS_CAN_HandleTypeDef*) pdev->pClassData;
@@ -395,76 +372,72 @@ static uint8_t USBD_GS_CAN_EP0_RxReady(USBD_HandleTypeDef *pdev) {
 
   USBD_SetupReqTypedef *req = &hcan->last_setup_request;
 
-    switch (req->bRequest) {
+  switch (req->bRequest) {
 
-      case GS_USB_BREQ_HOST_FORMAT:
-        // TODO process host data (expect 0x0000beef in byte_order)
-        memcpy(&hcan->host_config, hcan->ep0_buf, sizeof(hcan->host_config));
-        break;
+    case GS_USB_BREQ_HOST_FORMAT:
+      // TODO process host data (expect 0x0000beef in byte_order)
+      memcpy(&hcan->host_config, hcan->ep0_buf, sizeof(hcan->host_config));
+      break;
 
-      case GS_USB_BREQ_IDENTIFY:
-        memcpy(&param_u32, hcan->ep0_buf, sizeof(param_u32));
-        if (param_u32) {
-          //led_run_sequence(hcan->leds, led_identify_seq, -1);
-        } else {
-          ch = hcan->channels[req->wValue]; // TODO verify wValue input data (implement getChannelData() ?)
-            //led_set_mode(hcan->leds, can_is_enabled(ch) ? led_mode_normal : led_mode_off);
-        }
-        break;
+  case GS_USB_BREQ_IDENTIFY:
+    memcpy(&param_u32, hcan->ep0_buf, sizeof(param_u32));
+    if (param_u32) {
+      // Blink an LED sequence
+    }
+    else {
+      ch = hcan->channels[req->wValue];
+      // Blink an LED sequence
+    }
+    break;
 
-      case GS_USB_BREQ_MODE:
-        if (req->wValue < NUM_CAN_CHANNEL) {
+  case GS_USB_BREQ_MODE:
+    if (req->wValue < NUM_CAN_CHANNEL) {
 
-          mode = (struct gs_device_mode*)hcan->ep0_buf;
-          ch = hcan->channels[req->wValue];
+      mode = (struct gs_device_mode*)hcan->ep0_buf;
+      ch = hcan->channels[req->wValue];
 
-        if (mode->mode == GS_CAN_MODE_RESET) {
+      if (mode->mode == GS_CAN_MODE_RESET) {
 
-          can_disable(ch);
-          //led_set_mode(hcan->leds, led_mode_off);
-
-        } else if (mode->mode == GS_CAN_MODE_START) {
-
-          hcan->timestamps_enabled = (mode->flags & GS_CAN_MODE_HW_TIMESTAMP) != 0;
-          hcan->pad_pkts_to_max_pkt_size = (mode->flags & GS_CAN_MODE_PAD_PKTS_TO_MAX_PKT_SIZE) != 0;
-          hcan->canfd_enabled = (mode->flags & GS_CAN_MODE_FD) != 0;
-
-          can_enable(ch,
-            (mode->flags & GS_CAN_MODE_LOOP_BACK) != 0,
-            (mode->flags & GS_CAN_MODE_LISTEN_ONLY) != 0,
-            (mode->flags & GS_CAN_MODE_ONE_SHOT) != 0,
-            (mode->flags & GS_CAN_MODE_FD) != 0
-          );
-          //led_set_mode(hcan->leds, led_mode_normal);
-        }
+        can_disable(ch);
       }
-        break;
+      else if (mode->mode == GS_CAN_MODE_START) {
+        hcan->canfd_enabled[req->wValue] = (mode->flags & GS_CAN_MODE_FD) != 0;
 
-      case GS_USB_BREQ_BITTIMING:
-        timing = (struct gs_device_bittiming*)hcan->ep0_buf;
-        if (req->wValue < NUM_CAN_CHANNEL) {
-          can_set_bittiming(
-            hcan->channels[req->wValue],
-            timing->brp,
-            timing->prop_seg + timing->phase_seg1,
-            timing->phase_seg2,
-            timing->sjw
-          );
-        }
-        break;
+        can_enable(ch,
+          (mode->flags & GS_CAN_MODE_LOOP_BACK) != 0,
+          (mode->flags & GS_CAN_MODE_LISTEN_ONLY) != 0,
+          (mode->flags & GS_CAN_MODE_ONE_SHOT) != 0,
+          (mode->flags & GS_CAN_MODE_FD) != 0
+        );
+      }
+    }
+    break;
 
-      case GS_USB_BREQ_DATA_BITTIMING:
-        timing = (struct gs_device_bittiming*)hcan->ep0_buf;
-        if (req->wValue < NUM_CAN_CHANNEL) {
-          can_set_data_bittiming(
-            hcan->channels[req->wValue],
-            timing->brp,
-            timing->prop_seg + timing->phase_seg1,
-            timing->phase_seg2,
-            timing->sjw
-          );
-        }
-        break;
+  case GS_USB_BREQ_BITTIMING:
+    timing = (struct gs_device_bittiming*)hcan->ep0_buf;
+    if (req->wValue < NUM_CAN_CHANNEL) {
+      can_set_bittiming(
+        hcan->channels[req->wValue],
+        timing->brp,
+        timing->prop_seg + timing->phase_seg1,
+        timing->phase_seg2,
+        timing->sjw
+      );
+    }
+    break;
+
+  case GS_USB_BREQ_DATA_BITTIMING:
+    timing = (struct gs_device_bittiming*)hcan->ep0_buf;
+    if (req->wValue < NUM_CAN_CHANNEL) {
+      can_set_data_bittiming(
+        hcan->channels[req->wValue],
+        timing->brp,
+        timing->prop_seg + timing->phase_seg1,
+        timing->phase_seg2,
+        timing->sjw
+      );
+    }
+    break;
 
     default:
       break;
@@ -478,7 +451,6 @@ static uint8_t USBD_GS_CAN_DFU_Request(USBD_HandleTypeDef *pdev, USBD_SetupReqTy
 {
   USBD_GS_CAN_HandleTypeDef *hcan = (USBD_GS_CAN_HandleTypeDef*) pdev->pClassData;
   switch (req->bRequest) {
-
     case 0: // DETACH request
       hcan->dfu_detach_requested = true;
       break;
@@ -513,6 +485,7 @@ static uint8_t USBD_GS_CAN_Config_Request(USBD_HandleTypeDef *pdev, USBD_SetupRe
     case GS_USB_BREQ_SET_USER_ID:
     case GS_USB_BREQ_DATA_BITTIMING:
       hcan->last_setup_request = *req;
+
       USBD_CtlPrepareRx(pdev, hcan->ep0_buf, req->wLength);
       break;
 
@@ -631,7 +604,7 @@ static uint8_t USBD_GS_CAN_DataOut(USBD_HandleTypeDef *pdev, uint8_t epnum) {
   USBD_GS_CAN_HandleTypeDef *hcan = (USBD_GS_CAN_HandleTypeDef*)pdev->pClassData;
 
   uint32_t rxlen = USBD_LL_GetRxDataSize(pdev, epnum);
-  if (rxlen < (sizeof(struct gs_host_frame)-4)) {
+  if ((rxlen != (sizeof(struct gs_host_frame))) && (rxlen != (sizeof(struct gs_host_frame_classic_can)))) {
     // Invalid frame length, just ignore it and receive into the same buffer
     // again next time.
     USBD_GS_CAN_PrepareReceive(pdev);
@@ -682,41 +655,16 @@ uint8_t USBD_GS_CAN_Transmit(USBD_HandleTypeDef *pdev, uint8_t *buf, uint16_t le
 
 uint8_t USBD_GS_CAN_SendFrame(USBD_HandleTypeDef *pdev, struct gs_host_frame *frame)
 {
-  //uint8_t buf[CAN_DATA_MAX_PACKET_SIZE];
-  uint8_t *send_addr;
+  size_t len = 0;
 
-  USBD_GS_CAN_HandleTypeDef *hcan = (USBD_GS_CAN_HandleTypeDef*)pdev->pClassData;
-  size_t len = sizeof(struct gs_host_frame);
-
-  //if (!hcan->timestamps_enabled) {
-  //  len -= 4;
-  //}
-
-  send_addr = (uint8_t *)frame;
-
-  /* not sure if this is needed for the new driver design - need new driver for Windows */
-  //if(hcan->pad_pkts_to_max_pkt_size){
-  //  // When talking to WinUSB it seems to help a lot if the
-  //  // size of packet you send equals the max packet size.
-  //  // In this mode, fill packets out to max packet size and
-  //  // then send.
-  //  memcpy(buf, frame, len);
-  //
-  //  // zero rest of buffer
-  //  memset(buf + len, 0, sizeof(buf) - len);
-  //  send_addr = buf;
-  //  len = sizeof(buf);
-  //}
-
-  if (!hcan->canfd_enabled) {
-    /* if CAN_FD is not enabled we need to limit the length?? */
-    /* pretty hacky right now - sure there is a better way! */
-    /* without this and the current driver multi-frames have bad echo_ids */
-    /* which cause kernel errors - dmesg gets REALLY long */
-    len = (len - sizeof(struct canfd)) + sizeof(struct classic_can);
+  if (frame->flags & GS_CAN_FLAG_FD) {
+    len = (sizeof(struct gs_host_frame));
+  }
+  else {
+    len = (sizeof(struct gs_host_frame_classic_can));
   }
 
-  uint8_t result = USBD_GS_CAN_Transmit(pdev, send_addr, len);
+  uint8_t result = USBD_GS_CAN_Transmit(pdev, (uint8_t*)frame, len);
 
   return result;
 }

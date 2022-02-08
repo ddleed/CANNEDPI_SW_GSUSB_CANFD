@@ -38,8 +38,6 @@ extern TIM_HandleTypeDef htim6;
 extern osMessageQueueId_t queue_to_hostHandle;
 extern USBD_HandleTypeDef hUSB;
 
-static uint8_t can_covert_stm32dlc_to_len(uint32_t DataLength);
-static uint32_t can_covert_len_to_stm32dlc(uint8_t len);
 static void can_parse_error_status(FDCAN_ProtocolStatusTypeDef *status, struct gs_host_frame *frame);
 
 void can_init(FDCAN_HandleTypeDef *hcan, FDCAN_GlobalTypeDef *instance)
@@ -84,14 +82,15 @@ void can_enable(FDCAN_HandleTypeDef *hcan, bool loop_back, bool listen_only, boo
 {
   FDCAN_FilterTypeDef sFilterConfig;
 
-  hcan->Init.AutoRetransmission = ENABLE;
-  if (one_shot)
-  {
+  if (one_shot) {
     hcan->Init.AutoRetransmission = DISABLE;
+  }
+  else {
+    hcan->Init.AutoRetransmission = ENABLE;
   }
 
   hcan->Init.Mode = FDCAN_MODE_NORMAL;
-  hcan->Init.FrameFormat = FDCAN_FRAME_CLASSIC;
+
   if (loop_back && listen_only)
   {
     hcan->Init.Mode = FDCAN_MODE_INTERNAL_LOOPBACK;
@@ -109,12 +108,12 @@ void can_enable(FDCAN_HandleTypeDef *hcan, bool loop_back, bool listen_only, boo
     //normal is good
   }
 
-  /* we should also add a flag for non-BRS */
   if (can_mode_fd) {
     hcan->Init.FrameFormat = FDCAN_FRAME_FD_BRS;
   }
-
-  hcan->Init.AutoRetransmission = DISABLE;
+  else {
+    hcan->Init.FrameFormat = FDCAN_FRAME_CLASSIC;
+  }
 
   HAL_FDCAN_Init(hcan);
 
@@ -139,6 +138,9 @@ void can_enable(FDCAN_HandleTypeDef *hcan, bool loop_back, bool listen_only, boo
   HAL_FDCAN_ActivateNotification(hcan, FDCAN_IT_RX_FIFO0_NEW_MESSAGE
                                  | FDCAN_IT_LIST_BIT_LINE_ERROR
                                  | FDCAN_IT_LIST_PROTOCOL_ERROR, 0);
+
+  HAL_GPIO_WritePin(LED2_GPIO_Port, LED2_Pin, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(LED2_GPIO_Port, LED2_Pin, GPIO_PIN_SET);
 }
 
 void can_disable(FDCAN_HandleTypeDef *hcan)
@@ -149,6 +151,8 @@ void can_disable(FDCAN_HandleTypeDef *hcan)
                                    | FDCAN_IT_LIST_BIT_LINE_ERROR
                                    | FDCAN_IT_LIST_PROTOCOL_ERROR);
 
+  HAL_GPIO_WritePin(LED2_GPIO_Port, LED2_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(LED2_GPIO_Port, LED2_Pin, GPIO_PIN_RESET);
 }
 
 bool can_is_enabled(FDCAN_HandleTypeDef *hcan)
@@ -165,19 +169,17 @@ bool can_send(FDCAN_HandleTypeDef *hcan, struct gs_host_frame *frame)
 {
   FDCAN_TxHeaderTypeDef TxHeader;
 
+  TxHeader.DataLength = frame->can_dlc << 16;
+  TxHeader.ErrorStateIndicator = FDCAN_ESI_ACTIVE;
+  TxHeader.TxEventFifoControl = FDCAN_NO_TX_EVENTS;
+  TxHeader.MessageMarker = 0;
+
   if (frame->can_id & CAN_RTR_FLAG) {
       TxHeader.TxFrameType = FDCAN_REMOTE_FRAME;
   }
   else {
       TxHeader.TxFrameType = FDCAN_DATA_FRAME;
   }
-
-  TxHeader.DataLength = frame->can_dlc << 16;
-  TxHeader.ErrorStateIndicator = FDCAN_ESI_ACTIVE;
-  TxHeader.BitRateSwitch = FDCAN_BRS_OFF;
-  TxHeader.FDFormat = FDCAN_CLASSIC_CAN;
-  TxHeader.TxEventFifoControl = FDCAN_NO_TX_EVENTS;
-  TxHeader.MessageMarker = 0;
 
   if (frame->can_id & CAN_EFF_FLAG) {
     TxHeader.IdType = FDCAN_EXTENDED_ID;
@@ -193,14 +195,19 @@ bool can_send(FDCAN_HandleTypeDef *hcan, struct gs_host_frame *frame)
     if (frame->flags & GS_CAN_FLAG_BRS) {
       TxHeader.BitRateSwitch = FDCAN_BRS_ON;
     }
-    if (frame->can_dlc > 8) {
-      TxHeader.DataLength = can_covert_len_to_stm32dlc(frame->can_dlc);
+    else {
+      TxHeader.BitRateSwitch = FDCAN_BRS_OFF;
     }
-    memcpy(can_tx_data_buff, frame->canfd.data, frame->can_dlc);
+    memcpy(can_tx_data_buff, frame->canfd.data, 64);
   }
   else {
-    memcpy(can_tx_data_buff, frame->classic_can.data, frame->can_dlc);
+    TxHeader.BitRateSwitch = FDCAN_BRS_OFF;
+    TxHeader.FDFormat = FDCAN_CLASSIC_CAN;
+    memcpy(can_tx_data_buff, frame->classic_can.data, 8);
   }
+
+  /* blink LED to indicate a CAN TX */
+  HAL_GPIO_TogglePin(LED2_GPIO_Port, LED2_Pin);
 
   if (HAL_FDCAN_AddMessageToTxFifoQ(hcan, &TxHeader, can_tx_data_buff) != HAL_OK) {
       return false;
@@ -230,6 +237,7 @@ void HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef *hfdcan, uint32_t RxFifo0ITs)
   }
 
   frame.can_dlc = (RxHeader.DataLength & 0x000F0000) >> 16;
+
   frame.echo_id = 0xFFFFFFFF; // not a echo frame
   frame.reserved = 0;
   frame.flags = 0;
@@ -240,84 +248,16 @@ void HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef *hfdcan, uint32_t RxFifo0ITs)
     if (RxHeader.BitRateSwitch == FDCAN_BRS_ON) {
       frame.flags |= GS_CAN_FLAG_BRS;
     }
-    /* need to handle the fact that DLCs over 8 bytes are enumerated */
-    if (RxHeader.DataLength > FDCAN_DLC_BYTES_8) {
-      /* convert the enumeration to size */
-      frame.can_dlc = can_covert_stm32dlc_to_len(RxHeader.DataLength);
-    }
-
-    memcpy(frame.canfd.data, can_rx_data_buff, frame.can_dlc);
+    memcpy(frame.canfd.data, can_rx_data_buff, 64);
   }
   else {
-    memcpy(frame.classic_can.data, can_rx_data_buff, frame.can_dlc);
+    memcpy(frame.classic_can.data, can_rx_data_buff, 8);
   }
 
   /* put this CAN message into the queue to send to host */
   osMessageQueuePut(queue_to_hostHandle, &frame, 0, 0);
-}
-
-static uint8_t can_covert_stm32dlc_to_len(uint32_t DataLength)
-{
-
-  uint8_t len = 0;
-
-  switch (DataLength) {
-    case FDCAN_DLC_BYTES_12:
-      len = 12;
-      break;
-    case FDCAN_DLC_BYTES_16:
-      len = 16;
-      break;
-    case FDCAN_DLC_BYTES_20:
-      len = 20;
-      break;
-    case FDCAN_DLC_BYTES_24:
-      len = 24;
-      break;
-    case FDCAN_DLC_BYTES_32:
-      len = 32;
-      break;
-    case FDCAN_DLC_BYTES_48:
-      len = 48;
-      break;
-    case FDCAN_DLC_BYTES_64:
-      len = 64;
-      break;
-  }
-
-  return len;
-}
-
-static uint32_t can_covert_len_to_stm32dlc(uint8_t len)
-{
-
-  uint32_t DataLength = 0;
-
-  switch (len) {
-    case 12:
-      DataLength = FDCAN_DLC_BYTES_12;
-      break;
-    case 16:
-      DataLength = FDCAN_DLC_BYTES_16;
-      break;
-    case 20:
-      DataLength = FDCAN_DLC_BYTES_20;
-      break;
-    case 24:
-      DataLength = FDCAN_DLC_BYTES_24;
-      break;
-    case 32:
-      DataLength = FDCAN_DLC_BYTES_32;
-      break;
-    case 48:
-      DataLength = FDCAN_DLC_BYTES_48;
-      break;
-    case 64:
-      DataLength = FDCAN_DLC_BYTES_64;
-      break;
-  }
-
-  return DataLength;
+  /* blink LED to indicate a CAN RX */
+  HAL_GPIO_TogglePin(LED1_GPIO_Port, LED1_Pin);
 }
 
 void HAL_FDCAN_ErrorStatusCallback(FDCAN_HandleTypeDef *hfdcan, uint32_t ErrorStatusITs)

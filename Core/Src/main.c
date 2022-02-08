@@ -694,7 +694,6 @@ void start_task_main(void *argument)
     if (osMessageQueueGet(queue_from_hostHandle, &frame, 0, 0) == osOK){
       if (can_send(USBD_GS_CAN_GetChannelHandle(&hUSB,frame.channel), &frame)) {
         // Echo sent frame back to host
-        frame.echo_id = 0xFFFFFFFF;
         frame.flags = 0x0;
         frame.reserved = 0x0;
         osMessageQueuePut(queue_to_hostHandle, &frame, 0, 0);
@@ -706,15 +705,12 @@ void start_task_main(void *argument)
     }
 
     if (osMessageQueueGet(queue_to_hostHandle, &frame, 0, 0) == osOK) {
-      if (USBD_GS_CAN_SendFrame(&hUSB, &frame) == USBD_OK) {
-
-      }
-      else {
+      if (USBD_GS_CAN_SendFrame(&hUSB, &frame) != USBD_OK) {
         /* throw the message back onto the queue */
         osMessageQueuePut(queue_to_hostHandle, &frame, 0, 0);
-        while(42);
       }
     }
+
     osDelay(1);
   }
   /* USER CODE END 5 */

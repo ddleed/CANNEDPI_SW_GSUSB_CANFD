@@ -185,7 +185,7 @@ enum gs_can_state {
 /* data types passed between host and device */
 struct gs_host_config {
   u32 byte_order;
-} __packed;
+} __attribute__((packed));
 /* All data exchanged between host and device is exchanged in host byte order,
  * thanks to the struct gs_host_config byte_order member, which is sent first
  * to indicate the desired byte order.
@@ -198,18 +198,18 @@ struct gs_device_config {
   u8 icount;
   u32 sw_version;
   u32 hw_version;
-} __packed;
+} __attribute__((packed));
 
 struct gs_device_mode {
   u32 mode;
   u32 flags;
-} __packed;
+} __attribute__((packed));
 
 struct gs_device_state {
   u32 state;
   u32 rxerr;
   u32 txerr;
-} __packed;
+} __attribute__((packed));
 
 struct gs_device_bittiming {
   u32 prop_seg;
@@ -217,7 +217,7 @@ struct gs_device_bittiming {
   u32 phase_seg2;
   u32 sjw;
   u32 brp;
-} __packed;
+} __attribute__((packed));
 
 struct gs_device_bt_const {
   u32 feature;
@@ -230,7 +230,7 @@ struct gs_device_bt_const {
   u32 brp_min;
   u32 brp_max;
   u32 brp_inc;
-} __packed;
+} __attribute__((packed));
 
 struct gs_device_bt_const_extended {
   u32 feature;
@@ -252,25 +252,15 @@ struct gs_device_bt_const_extended {
   u32 dbrp_min;
   u32 dbrp_max;
   u32 dbrp_inc;
-} __packed;
+} __attribute__((packed));
 
 struct classic_can {
   u8 data[8];
-} __packed;
-
-struct classic_can_quirk {
-  u8 data[8];
-  u8 quirk;
-} __packed;
+} __attribute__((packed));
 
 struct canfd {
   u8 data[64];
-} __packed;
-
-struct canfd_quirk {
-  u8 data[64];
-  u8 quirk;
-} __packed;
+} __attribute__((packed));
 
 struct gs_host_frame {
   u32 echo_id;
@@ -283,11 +273,21 @@ struct gs_host_frame {
 
   union {
     struct classic_can classic_can;
-    struct classic_can_quirk classic_can_quirk;
     struct canfd canfd;
-    struct canfd_quirk canfd_quirk;
   };
-} __packed;
+} __attribute__((packed));
+
+struct gs_host_frame_classic_can {
+  u32 echo_id;
+  u32 can_id;
+
+  u8 can_dlc;
+  u8 channel;
+  u8 flags;
+  u8 reserved;
+
+  struct classic_can classic_can;
+} __attribute__((packed));
 
 struct gs_tx_context {
   struct gs_can *dev;
