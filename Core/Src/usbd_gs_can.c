@@ -29,14 +29,15 @@ THE SOFTWARE.
 #include <string.h>
 #include "usbd_gs_can.h"
 #include "main.h"
-#include "cmsis_os.h"
+#include "FreeRTOS.h"
+#include "queue.h"
 #include "usbd_desc.h"
 #include "usbd_ctlreq.h"
 #include "usbd_ioreq.h"
 #include "gs_usb.h"
 #include "can.h"
 
-extern osMessageQueueId_t queue_from_hostHandle;
+extern QueueHandle_t queue_from_hostHandle;
 extern TIM_HandleTypeDef htim6;
 extern uint8_t USBD_StrDesc[USBD_MAX_STR_DESC_SIZ];
 
@@ -334,8 +335,9 @@ void USBD_GS_CAN_SetChannel(USBD_HandleTypeDef *pdev, uint8_t channel, FDCAN_Han
   USBD_GS_CAN_HandleTypeDef *hcan = (USBD_GS_CAN_HandleTypeDef*) pdev->pClassData;
 
   assert_param(hcan);
-  assert_param(channel < NUM_CAN_CHANNEL);
-  hcan->channels[channel] = handle;
+  if (channel < NUM_CAN_CHANNEL) {
+    hcan->channels[channel] = handle;
+  }
   return;
 }
 
@@ -550,9 +552,7 @@ bool USBD_GS_CAN_CustomDeviceRequest(USBD_HandleTypeDef *pdev, USBD_SetupReqType
           return true;
         }
         break;
-
     }
-
   }
 
   return false;
@@ -612,7 +612,7 @@ static uint8_t USBD_GS_CAN_DataOut(USBD_HandleTypeDef *pdev, uint8_t epnum) {
   }
 
   // Enqueue the frame we just received.
-  osMessageQueuePut(queue_from_hostHandle, &hcan->from_host_frame, 0, 0);
+  xQueueSendToBackFromISR(queue_from_hostHandle, &hcan->from_host_frame, NULL);
   USBD_GS_CAN_PrepareReceive(pdev);
   return USBD_OK;
 }

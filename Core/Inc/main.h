@@ -57,10 +57,16 @@ void Error_Handler(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
-#define LED1_Pin GPIO_PIN_5
-#define LED1_GPIO_Port GPIOB
-#define LED2_Pin GPIO_PIN_6
+#define LED2_Pin GPIO_PIN_11
 #define LED2_GPIO_Port GPIOB
+#define LED1_Pin GPIO_PIN_14
+#define LED1_GPIO_Port GPIOB
+#define LED3_Pin GPIO_PIN_15
+#define LED3_GPIO_Port GPIOB
+#define LED1_LEGACY_Pin GPIO_PIN_5
+#define LED1_LEGACY_GPIO_Port GPIOB
+#define LED2_LEGACY_Pin GPIO_PIN_6
+#define LED2_LEGACY_GPIO_Port GPIOB
 void   MX_FDCAN1_Init(void);
 void   MX_FDCAN2_Init(void);
 void   MX_FDCAN3_Init(void);

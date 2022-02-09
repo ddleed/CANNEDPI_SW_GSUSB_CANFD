@@ -18,11 +18,13 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
-#include "cmsis_os.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "FreeRTOS.h"
+#include "queue.h"
 #include "can.h"
+#include "led.h"
 #include "usbd_def.h"
 #include "usbd_desc.h"
 #include "usbd_core.h"
@@ -37,6 +39,11 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+#define TASK_MAIN_STACK_SIZE (2048 / sizeof(portSTACK_TYPE))
+#define TASK_MAIN_STACK_PRIORITY (tskIDLE_PRIORITY + 24)
+#define TASK_SERIAL_COMM_STACK_SIZE (128 / sizeof(portSTACK_TYPE))
+#define TASK_SERIAL_COMM_STACK_PRIORITY (tskIDLE_PRIORITY + 8)
+
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -59,32 +66,19 @@ UART_HandleTypeDef huart2;
 
 PCD_HandleTypeDef hpcd_USB_FS;
 
-/* Definitions for task_main */
-osThreadId_t task_mainHandle;
-const osThreadAttr_t task_main_attributes = {
-  .name = "task_main",
-  .priority = (osPriority_t) osPriorityNormal,
-  .stack_size = 2048 * 4
-};
-/* Definitions for task_serial_com */
-osThreadId_t task_serial_comHandle;
-const osThreadAttr_t task_serial_com_attributes = {
-  .name = "task_serial_com",
-  .priority = (osPriority_t) osPriorityLow,
-  .stack_size = 128 * 4
-};
-/* Definitions for queue_to_host */
-osMessageQueueId_t queue_to_hostHandle;
-const osMessageQueueAttr_t queue_to_host_attributes = {
-  .name = "queue_to_host"
-};
-/* Definitions for queue_from_host */
-osMessageQueueId_t queue_from_hostHandle;
-const osMessageQueueAttr_t queue_from_host_attributes = {
-  .name = "queue_from_host"
-};
 /* USER CODE BEGIN PV */
+static TaskHandle_t xCreatedMainTask;
+static TaskHandle_t xCreatedSerialCommTask;
+
+QueueHandle_t queue_from_hostHandle;
+QueueHandle_t queue_to_hostHandle;
+
 USBD_HandleTypeDef hUSB;
+
+LED_HandleTypeDef hled1;
+LED_HandleTypeDef hled2;
+LED_HandleTypeDef hled3;
+
 uint8_t uart_gateway_buff[2];
 
 /* USER CODE END PV */
@@ -97,11 +91,9 @@ static void MX_UART4_Init(void);
 static void MX_USART1_UART_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_TIM6_Init(void);
-void start_task_main(void *argument);
-void start_task_serial_comm(void *argument);
-
 /* USER CODE BEGIN PFP */
-
+static void task_main(void *argument);
+static void task_serial_comm(void *argument);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -145,61 +137,35 @@ int main(void)
   /* USER CODE BEGIN 2 */
   can_init(&hfdcan1, FDCAN1);
   can_init(&hfdcan2, FDCAN2);
+  can_init(&hfdcan3, FDCAN3);
+
+  led_init(&hled1, LED1_LEGACY_GPIO_Port, LED1_LEGACY_Pin, LED_MODE_INACTIVE, LED_ACTIVE_HIGH);
+  led_init(&hled2, LED2_LEGACY_GPIO_Port, LED2_LEGACY_Pin, LED_MODE_INACTIVE, LED_ACTIVE_HIGH);
+  led_init(&hled3, LED2_GPIO_Port, LED2_Pin, LED_MODE_INACTIVE, LED_ACTIVE_HIGH);
 
   USBD_Init(&hUSB, (USBD_DescriptorsTypeDef*)&FS_Desc, DEVICE_FS);
   USBD_RegisterClass(&hUSB, &USBD_GS_CAN);
   USBD_GS_CAN_Init(&hUSB);//, q_frame_pool, q_from_host, &hLED);
   USBD_GS_CAN_SetChannel(&hUSB, 0, &hfdcan1);
   USBD_GS_CAN_SetChannel(&hUSB, 1, &hfdcan2);
+  USBD_GS_CAN_SetChannel(&hUSB, 2, &hfdcan3);
+
   USBD_Start(&hUSB);
+
+  /* Init the RTOS streams and queues */
+  queue_from_hostHandle = xQueueCreate(16, sizeof(struct gs_host_frame));
+  queue_to_hostHandle = xQueueCreate(16, sizeof(struct gs_host_frame));
+
+
+  /* Init the RTOS tasks */
+  xTaskCreate(task_main, "Main Task", TASK_MAIN_STACK_SIZE, NULL, TASK_MAIN_STACK_PRIORITY, &xCreatedMainTask);
+  xTaskCreate(task_serial_comm, "Serial Comm Task", TASK_SERIAL_COMM_STACK_SIZE, NULL, TASK_SERIAL_COMM_STACK_PRIORITY, &xCreatedSerialCommTask);
+
+  /* Start scheduler */
+  vTaskStartScheduler();
 
   /* USER CODE END 2 */
 
-  /* Init scheduler */
-  osKernelInitialize();
-
-  /* USER CODE BEGIN RTOS_MUTEX */
-  /* add mutexes, ... */
-  /* USER CODE END RTOS_MUTEX */
-
-  /* USER CODE BEGIN RTOS_SEMAPHORES */
-  /* add semaphores, ... */
-  /* USER CODE END RTOS_SEMAPHORES */
-
-  /* USER CODE BEGIN RTOS_TIMERS */
-  /* start timers, add new ones, ... */
-  /* USER CODE END RTOS_TIMERS */
-
-  /* Create the queue(s) */
-  /* creation of queue_to_host */
-  queue_to_hostHandle = osMessageQueueNew (16, sizeof(struct gs_host_frame), &queue_to_host_attributes);
-
-  /* creation of queue_from_host */
-  queue_from_hostHandle = osMessageQueueNew (16, sizeof(struct gs_host_frame), &queue_from_host_attributes);
-
-  /* USER CODE BEGIN RTOS_QUEUES */
-  /* add queues, ... */
-  /* USER CODE END RTOS_QUEUES */
-
-  /* Create the thread(s) */
-  /* creation of task_main */
-  task_mainHandle = osThreadNew(start_task_main, NULL, &task_main_attributes);
-
-  /* creation of task_serial_com */
-  task_serial_comHandle = osThreadNew(start_task_serial_comm, NULL, &task_serial_com_attributes);
-
-  /* USER CODE BEGIN RTOS_THREADS */
-  /* add threads, ... */
-  /* USER CODE END RTOS_THREADS */
-
-  /* USER CODE BEGIN RTOS_EVENTS */
-  /* add events, ... */
-  /* USER CODE END RTOS_EVENTS */
-
-  /* Start scheduler */
-  osKernelStart();
-
-  /* We should never get here as control is now taken by the scheduler */
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
@@ -661,10 +627,13 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOB, LED1_Pin|LED2_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOB, LED2_Pin|LED1_Pin|LED3_Pin|LED1_LEGACY_Pin
+                          |LED2_LEGACY_Pin, GPIO_PIN_RESET);
 
-  /*Configure GPIO pins : LED1_Pin LED2_Pin */
-  GPIO_InitStruct.Pin = LED1_Pin|LED2_Pin;
+  /*Configure GPIO pins : LED2_Pin LED1_Pin LED3_Pin LED1_LEGACY_Pin
+                           LED2_LEGACY_Pin */
+  GPIO_InitStruct.Pin = LED2_Pin|LED1_Pin|LED3_Pin|LED1_LEGACY_Pin
+                          |LED2_LEGACY_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
@@ -674,58 +643,55 @@ static void MX_GPIO_Init(void)
 
 /* USER CODE BEGIN 4 */
 
-/* USER CODE END 4 */
-
-/* USER CODE BEGIN Header_start_task_main */
 /**
   * @brief  Function implementing the task_main thread.
   * @param  argument: Not used
   * @retval None
   */
-/* USER CODE END Header_start_task_main */
-void start_task_main(void *argument)
+
+void task_main(void *argument)
 {
-  /* USER CODE BEGIN 5 */
+
   struct gs_host_frame frame;
 
   /* Infinite loop */
   for(;;)
   {
-    if (osMessageQueueGet(queue_from_hostHandle, &frame, 0, 0) == osOK){
+    if (xQueueReceive(queue_from_hostHandle, &frame, 0) == pdPASS){
       if (can_send(USBD_GS_CAN_GetChannelHandle(&hUSB,frame.channel), &frame)) {
         // Echo sent frame back to host
         frame.flags = 0x0;
         frame.reserved = 0x0;
-        osMessageQueuePut(queue_to_hostHandle, &frame, 0, 0);
+        xQueueSendToBack(queue_to_hostHandle, &frame, 0);
       }
       else {
         /* throw the message back onto the queue */
-        osMessageQueuePut(queue_from_hostHandle, &frame, 0, 0);
+        xQueueSendToFront(queue_from_hostHandle, &frame, 0);
       }
     }
 
-    if (osMessageQueueGet(queue_to_hostHandle, &frame, 0, 0) == osOK) {
+    if (xQueueReceive(queue_to_hostHandle, &frame, 0) == pdPASS) {
       if (USBD_GS_CAN_SendFrame(&hUSB, &frame) != USBD_OK) {
         /* throw the message back onto the queue */
-        osMessageQueuePut(queue_to_hostHandle, &frame, 0, 0);
+        xQueueSendToFront(queue_to_hostHandle, &frame, 0);
       }
     }
 
-    osDelay(1);
+    led_update(&hled1);
+    led_update(&hled2);
+    led_update(&hled3);
+
+    vTaskDelay(1);
   }
-  /* USER CODE END 5 */
 }
 
-/* USER CODE BEGIN Header_start_task_serial_comm */
 /**
-* @brief Function implementing the task_serial_com thread.
+* @brief Function implementing the task_serial_comm thread.
 * @param argument: Not used
 * @retval None
 */
-/* USER CODE END Header_start_task_serial_comm */
-void start_task_serial_comm(void *argument)
+static void task_serial_comm(void *argument)
 {
-  /* USER CODE BEGIN start_task_serial_comm */
   /* Infinite loop */
   for(;;)
   {
@@ -735,9 +701,11 @@ void start_task_serial_comm(void *argument)
     else if (HAL_UART_Receive(&huart2, &uart_gateway_buff[1], 1, 0) == HAL_OK) {
       HAL_UART_Transmit(&huart1, &uart_gateway_buff[1], 1, 0);
     }
+
+    vTaskDelay(1);
   }
-  /* USER CODE END start_task_serial_comm */
 }
+/* USER CODE END 4 */
 
 /**
   * @brief  Period elapsed callback in non blocking mode
@@ -768,6 +736,12 @@ void Error_Handler(void)
 {
   /* USER CODE BEGIN Error_Handler_Debug */
   /* User can add his own implementation to report the HAL error return state */
+  /* Turn on all the LEDs */
+  HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(LED2_GPIO_Port, LED2_Pin, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(LED3_GPIO_Port, LED3_Pin, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(LED1_LEGACY_GPIO_Port, LED1_Pin, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(LED2_LEGACY_GPIO_Port, LED2_Pin, GPIO_PIN_SET);
   __disable_irq();
   while (1)
   {

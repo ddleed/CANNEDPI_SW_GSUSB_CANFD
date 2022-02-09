@@ -25,18 +25,26 @@ THE SOFTWARE.
 
 */
 
-#pragma once
+/* Define to prevent recursive inclusion -------------------------------------*/
+#ifndef __USBD_GS_CAN_H
+#define __USBD_GS_CAN_H
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 
 #include <stdbool.h>
 #include "usbd_def.h"
 #include "gs_usb.h"
 
-/* Define these here so they can be referenced in other files */
-
+/* Exported defines -----------------------------------------------------------*/
+#ifndef NUM_CAN_CHANNEL
+  #define NUM_CAN_CHANNEL           1
+#endif
 #define CAN_DATA_MAX_PACKET_SIZE    64  /* Endpoint IN & OUT Packet size */
 #define CAN_CMD_PACKET_SIZE         64  /* Control Endpoint Packet size */
 #define USB_CAN_CONFIG_DESC_SIZ     50
-#define NUM_CAN_CHANNEL             3
 #define USBD_GS_CAN_VENDOR_CODE     0x20
 #define DFU_INTERFACE_NUM           1
 #define DFU_INTERFACE_STR_INDEX     0xE0
@@ -45,6 +53,7 @@ extern USBD_ClassTypeDef USBD_GS_CAN;
 
 #define CAN_CLOCK_SPEED 80000000
 
+/* Exported types ------------------------------------------------------------*/
 typedef struct {
   uint8_t ep0_buf[128]; /* TODO: There is a memory overrun if set to 64 - need to find it - no overrun with 128 */
   __IO uint32_t TxState;
@@ -57,6 +66,7 @@ typedef struct {
   bool canfd_enabled[NUM_CAN_CHANNEL];
 } USBD_GS_CAN_HandleTypeDef __attribute__ ((aligned (4)));
 
+/* Exported functions --------------------------------------------------------*/
 uint8_t USBD_GS_CAN_Init(USBD_HandleTypeDef *pdev);//, queue_t *q_frame_pool, queue_t *q_from_host, led_data_t *leds);
 void USBD_GS_CAN_SetChannel(USBD_HandleTypeDef *pdev, uint8_t channel, FDCAN_HandleTypeDef* handle);
 FDCAN_HandleTypeDef* USBD_GS_CAN_GetChannelHandle(USBD_HandleTypeDef *pdev, uint8_t channel);
@@ -68,3 +78,9 @@ bool USBD_GS_CAN_CustomInterfaceRequest(USBD_HandleTypeDef *pdev, USBD_SetupReqT
 bool USBD_GS_CAN_DfuDetachRequested(USBD_HandleTypeDef *pdev);
 uint8_t USBD_GS_CAN_SendFrame(USBD_HandleTypeDef *pdev, struct gs_host_frame *frame);
 uint8_t USBD_GS_CAN_Transmit(USBD_HandleTypeDef *pdev, uint8_t *buf, uint16_t len);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif /* __USBD_GS_CAN_H */

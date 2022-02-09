@@ -60,7 +60,7 @@
 #define configENABLE_MPU                         0
 
 #define configUSE_PREEMPTION                     1
-#define configSUPPORT_STATIC_ALLOCATION          1
+#define configSUPPORT_STATIC_ALLOCATION          0
 #define configSUPPORT_DYNAMIC_ALLOCATION         1
 #define configUSE_IDLE_HOOK                      0
 #define configUSE_TICK_HOOK                      0
@@ -95,14 +95,6 @@
 
 /* The following flag must be enabled only when using newlib */
 #define configUSE_NEWLIB_REENTRANT          1
-
-/* CMSIS-RTOS V2 flags */
-#define configUSE_OS2_THREAD_SUSPEND_RESUME  1
-#define configUSE_OS2_THREAD_ENUMERATE       1
-#define configUSE_OS2_EVENTFLAGS_FROM_ISR    1
-#define configUSE_OS2_THREAD_FLAGS           1
-#define configUSE_OS2_TIMER                  1
-#define configUSE_OS2_MUTEX                  1
 
 /* Set the following definitions to 1 to include the API function, or zero
 to exclude the API function. */
@@ -161,10 +153,6 @@ header file. */
 standard names. */
 #define vPortSVCHandler    SVC_Handler
 #define xPortPendSVHandler PendSV_Handler
-
-/* IMPORTANT: After 10.3.1 update, Systick_Handler comes from NVIC (if SYS timebase = systick), otherwise from cmsis_os2.c */
-
-#define USE_CUSTOM_SYSTICK_HANDLER_IMPLEMENTATION 0
 
 /* USER CODE BEGIN Defines */
 /* Section where parameter definitions can be added (for instance, to override default ones in FreeRTOS.h) */

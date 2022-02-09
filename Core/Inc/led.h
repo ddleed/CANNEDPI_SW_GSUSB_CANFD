@@ -2,7 +2,6 @@
 
 The MIT License (MIT)
 
-Copyright (c) 2016 Hubert Denkmair
 Copyright (c) 2022 Ryan Edwards (changes for STM32G4 and CAN-FD)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -25,30 +24,50 @@ THE SOFTWARE.
 
 */
 
-/* Define to prevent recursive inclusion -------------------------------------*/
-#ifndef __CAN_H
-#define __CAN_H
+#ifndef __LED_H
+#define __LED_H
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-#include "main.h"
-#include <stdint.h>
-#include <stdbool.h>
-#include "gs_usb.h"
+/* Exported defines -----------------------------------------------------------*/
+#define LED_RXTX_ACTIVE_TIME_MS     50U
+#define LED_RXTX_INACTIVE_TIME_MS    50U
+
+#define LED_ACTIVE_LOW          0U
+#define LED_ACTIVE_HIGH         1U
+
+/* Exported types ------------------------------------------------------------*/
+typedef enum {
+  LED_MODE_INACTIVE = 0,
+  LED_MODE_ACTIVE,
+  LED_MODE_RXTX_ACTIVE,
+  LED_MODE_RXTX_HOLDOFF,
+  LED_MODE_BLINK
+} led_mode_t;
+
+typedef struct {
+  GPIO_TypeDef *GPIOx;
+  uint16_t GPIO_Pin;
+  GPIO_PinState initial_state;
+  led_mode_t led_mode;
+  uint8_t led_active_level;
+  uint32_t led_rxtx_timeout_tick;
+  uint32_t blink_period_ms;
+  uint32_t blink_toggle_timeout_tick;
+} LED_HandleTypeDef;
 
 /* Exported functions --------------------------------------------------------*/
-void can_init(FDCAN_HandleTypeDef *hcan, FDCAN_GlobalTypeDef *instance);
-void can_set_bittiming(FDCAN_HandleTypeDef *hcan, uint16_t brp, uint8_t phase_seg1, uint8_t phase_seg2, uint8_t sjw);
-void can_set_data_bittiming(FDCAN_HandleTypeDef *hcan, uint16_t brp, uint8_t phase_seg1, uint8_t phase_seg2, uint8_t sjw);
-void can_enable(FDCAN_HandleTypeDef *hcan, bool loop_back, bool listen_only, bool one_shot, bool can_mode_fd);
-void can_disable(FDCAN_HandleTypeDef *hcan);
-bool can_is_enabled(FDCAN_HandleTypeDef *hcan);
-bool can_send(FDCAN_HandleTypeDef *hcan, struct gs_host_frame *frame);
+void led_init(LED_HandleTypeDef* hled, GPIO_TypeDef *GPIOx, uint16_t GPIO_Pin, led_mode_t led_mode, uint8_t led_active_level);
+void led_update(LED_HandleTypeDef* hled);
+void led_set_active(LED_HandleTypeDef* hled);
+void led_set_inactive(LED_HandleTypeDef* hled);
+void led_indicate_rxtx(LED_HandleTypeDef* hled);
+void led_blink(LED_HandleTypeDef* hled, uint32_t period_ms);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif /* __CAN_H */
+#endif /* __LED_H */

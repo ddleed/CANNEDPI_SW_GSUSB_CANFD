@@ -25,14 +25,20 @@ THE SOFTWARE.
 
 */
 
-#pragma once
+/* Define to prevent recursive inclusion -------------------------------------*/
+#ifndef __GS_USB_H
+#define __GS_USB_H
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/* Exported defines -----------------------------------------------------------*/
 #define u32 uint32_t
 #define u8 uint8_t
 
 #define GSUSB_ENDPOINT_IN          0x81
 #define GSUSB_ENDPOINT_OUT         0x02
-
 
 #define GS_CAN_MODE_NORMAL                      0
 #define GS_CAN_MODE_LISTEN_ONLY                 (1<<0)
@@ -166,6 +172,7 @@ enum gs_usb_breq {
   GS_USB_BREQ_BT_CONST_EXT,
 };
 
+/* Exported types ------------------------------------------------------------*/
 enum gs_can_mode {
   /* reset a channel. turns it off */
   GS_CAN_MODE_RESET = 0,
@@ -294,3 +301,8 @@ struct gs_tx_context {
   unsigned int echo_id;
 };
 
+#ifdef __cplusplus
+}
+#endif
+
+#endif /* __GS_USB_H */
