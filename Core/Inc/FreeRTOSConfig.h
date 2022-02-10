@@ -153,6 +153,7 @@ header file. */
 standard names. */
 #define vPortSVCHandler    SVC_Handler
 #define xPortPendSVHandler PendSV_Handler
+#define xPortSysTickHandler SysTick_Handler
 
 /* USER CODE BEGIN Defines */
 /* Section where parameter definitions can be added (for instance, to override default ones in FreeRTOS.h) */

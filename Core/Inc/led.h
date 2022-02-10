@@ -2,7 +2,7 @@
 
 The MIT License (MIT)
 
-Copyright (c) 2022 Ryan Edwards (changes for STM32G4 and CAN-FD)
+Copyright (c) 2022 Ryan Edwards
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -33,10 +33,10 @@ extern "C" {
 
 /* Exported defines -----------------------------------------------------------*/
 #define LED_RXTX_ACTIVE_TIME_MS     50U
-#define LED_RXTX_INACTIVE_TIME_MS    50U
+#define LED_RXTX_INACTIVE_TIME_MS   50U
 
-#define LED_ACTIVE_LOW          0U
-#define LED_ACTIVE_HIGH         1U
+#define LED_ACTIVE_LOW              0U
+#define LED_ACTIVE_HIGH             1U
 
 /* Exported types ------------------------------------------------------------*/
 typedef enum {

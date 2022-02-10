@@ -57,16 +57,24 @@ void Error_Handler(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
+#define FDCAN2_TERM_EN_Pin GPIO_PIN_2
+#define FDCAN2_TERM_EN_GPIO_Port GPIOB
+#define FDCAN3_TERM_EN_Pin GPIO_PIN_10
+#define FDCAN3_TERM_EN_GPIO_Port GPIOB
 #define LED2_Pin GPIO_PIN_11
 #define LED2_GPIO_Port GPIOB
 #define LED1_Pin GPIO_PIN_14
 #define LED1_GPIO_Port GPIOB
 #define LED3_Pin GPIO_PIN_15
 #define LED3_GPIO_Port GPIOB
+#define RPI_SENSE_Pin GPIO_PIN_9
+#define RPI_SENSE_GPIO_Port GPIOA
 #define LED1_LEGACY_Pin GPIO_PIN_5
 #define LED1_LEGACY_GPIO_Port GPIOB
 #define LED2_LEGACY_Pin GPIO_PIN_6
 #define LED2_LEGACY_GPIO_Port GPIOB
+#define FDCAN1_TERM_EN_Pin GPIO_PIN_7
+#define FDCAN1_TERM_EN_GPIO_Port GPIOB
 void   MX_FDCAN1_Init(void);
 void   MX_FDCAN2_Init(void);
 void   MX_FDCAN3_Init(void);
