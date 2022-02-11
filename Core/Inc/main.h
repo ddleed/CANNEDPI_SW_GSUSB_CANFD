@@ -75,10 +75,6 @@ void Error_Handler(void);
 #define LED2_LEGACY_GPIO_Port GPIOB
 #define FDCAN1_TERM_EN_Pin GPIO_PIN_7
 #define FDCAN1_TERM_EN_GPIO_Port GPIOB
-void   MX_FDCAN1_Init(void);
-void   MX_FDCAN2_Init(void);
-void   MX_FDCAN3_Init(void);
-void   MX_USB_PCD_Init(void);
 /* USER CODE BEGIN Private defines */
 
 /* USER CODE END Private defines */

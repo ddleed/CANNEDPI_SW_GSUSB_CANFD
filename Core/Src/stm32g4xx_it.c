@@ -43,7 +43,7 @@
 
 /* Private variables ---------------------------------------------------------*/
 /* USER CODE BEGIN PV */
-extern void xPortSysTickHandler (void);
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -57,16 +57,15 @@ extern void xPortSysTickHandler (void);
 /* USER CODE END 0 */
 
 /* External variables --------------------------------------------------------*/
-extern FDCAN_HandleTypeDef hfdcan1;
-extern FDCAN_HandleTypeDef hfdcan2;
-extern FDCAN_HandleTypeDef hfdcan3;
 extern I2C_HandleTypeDef hi2c3;
 extern UART_HandleTypeDef huart4;
-extern PCD_HandleTypeDef hpcd_USB_FS;
 extern TIM_HandleTypeDef htim1;
 
 /* USER CODE BEGIN EV */
-
+extern FDCAN_HandleTypeDef hfdcan1;
+extern FDCAN_HandleTypeDef hfdcan2;
+extern FDCAN_HandleTypeDef hfdcan3;
+extern PCD_HandleTypeDef hpcd_USB_FS;
 /* USER CODE END EV */
 
 /******************************************************************************/
@@ -173,9 +172,8 @@ void DebugMon_Handler(void)
 void USB_LP_IRQHandler(void)
 {
   /* USER CODE BEGIN USB_LP_IRQn 0 */
-
-  /* USER CODE END USB_LP_IRQn 0 */
   HAL_PCD_IRQHandler(&hpcd_USB_FS);
+  /* USER CODE END USB_LP_IRQn 0 */
   /* USER CODE BEGIN USB_LP_IRQn 1 */
 
   /* USER CODE END USB_LP_IRQn 1 */
@@ -187,9 +185,8 @@ void USB_LP_IRQHandler(void)
 void FDCAN1_IT0_IRQHandler(void)
 {
   /* USER CODE BEGIN FDCAN1_IT0_IRQn 0 */
-
-  /* USER CODE END FDCAN1_IT0_IRQn 0 */
   HAL_FDCAN_IRQHandler(&hfdcan1);
+  /* USER CODE END FDCAN1_IT0_IRQn 0 */
   /* USER CODE BEGIN FDCAN1_IT0_IRQn 1 */
 
   /* USER CODE END FDCAN1_IT0_IRQn 1 */
@@ -229,9 +226,8 @@ void UART4_IRQHandler(void)
 void FDCAN2_IT0_IRQHandler(void)
 {
   /* USER CODE BEGIN FDCAN2_IT0_IRQn 0 */
-
-  /* USER CODE END FDCAN2_IT0_IRQn 0 */
   HAL_FDCAN_IRQHandler(&hfdcan2);
+  /* USER CODE END FDCAN2_IT0_IRQn 0 */
   /* USER CODE BEGIN FDCAN2_IT0_IRQn 1 */
 
   /* USER CODE END FDCAN2_IT0_IRQn 1 */
@@ -243,9 +239,8 @@ void FDCAN2_IT0_IRQHandler(void)
 void FDCAN3_IT0_IRQHandler(void)
 {
   /* USER CODE BEGIN FDCAN3_IT0_IRQn 0 */
-
-  /* USER CODE END FDCAN3_IT0_IRQn 0 */
   HAL_FDCAN_IRQHandler(&hfdcan3);
+  /* USER CODE END FDCAN3_IT0_IRQn 0 */
   /* USER CODE BEGIN FDCAN3_IT0_IRQn 1 */
 
   /* USER CODE END FDCAN3_IT0_IRQn 1 */

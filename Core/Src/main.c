@@ -23,8 +23,10 @@
 /* USER CODE BEGIN Includes */
 #include "FreeRTOS.h"
 #include "queue.h"
+#include "stream_buffer.h"
 #include "can.h"
 #include "led.h"
+#include "rtc_ds3231.h"
 #include "usbd_def.h"
 #include "usbd_desc.h"
 #include "usbd_core.h"
@@ -34,16 +36,21 @@
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
+#define IS_IRQ_MODE()             ( (SCB->ICSR & SCB_ICSR_VECTACTIVE_Msk) != 0)
 
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 #define TASK_MAIN_STACK_SIZE (2048 / sizeof(portSTACK_TYPE))
-#define TASK_MAIN_STACK_PRIORITY (tskIDLE_PRIORITY + 24)
+#define TASK_MAIN_STACK_PRIORITY (tskIDLE_PRIORITY + 2)
 #define TASK_SERIAL_COMM_STACK_SIZE (128 / sizeof(portSTACK_TYPE))
-#define TASK_SERIAL_COMM_STACK_PRIORITY (tskIDLE_PRIORITY + 8)
+#define TASK_SERIAL_COMM_STACK_PRIORITY (tskIDLE_PRIORITY + 1)
 
+#define STREAM_BUFFER_UART1_OUT_SIZEBYTES     100U
+#define STREAM_BUFFER_UART1_OUT_TRIGGERLEVEL  10U
+#define STREAM_BUFFER_UART2_OUT_SIZEBYTES     100U
+#define STREAM_BUFFER_UART2_OUT_TRIGGERLEVEL  10U
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -52,11 +59,9 @@
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
-FDCAN_HandleTypeDef hfdcan1;
-FDCAN_HandleTypeDef hfdcan2;
-FDCAN_HandleTypeDef hfdcan3;
-
 I2C_HandleTypeDef hi2c3;
+
+RTC_HandleTypeDef hrtc;
 
 TIM_HandleTypeDef htim6;
 
@@ -64,22 +69,27 @@ UART_HandleTypeDef huart4;
 UART_HandleTypeDef huart1;
 UART_HandleTypeDef huart2;
 
-PCD_HandleTypeDef hpcd_USB_FS;
-
 /* USER CODE BEGIN PV */
 static TaskHandle_t xCreatedMainTask;
 static TaskHandle_t xCreatedSerialCommTask;
 
+static StreamBufferHandle_t stream_buffer_uart1_out;
+static StreamBufferHandle_t stream_buffer_uart2_out;
+
 QueueHandle_t queue_from_hostHandle;
 QueueHandle_t queue_to_hostHandle;
+
+FDCAN_HandleTypeDef hfdcan1;
+FDCAN_HandleTypeDef hfdcan2;
+FDCAN_HandleTypeDef hfdcan3;
+
+PCD_HandleTypeDef hpcd_USB_FS;
 
 USBD_HandleTypeDef hUSB;
 
 LED_HandleTypeDef hled1;
 LED_HandleTypeDef hled2;
 LED_HandleTypeDef hled3;
-
-uint8_t uart_gateway_buff[2];
 
 /* USER CODE END PV */
 
@@ -91,6 +101,7 @@ static void MX_UART4_Init(void);
 static void MX_USART1_UART_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_TIM6_Init(void);
+static void MX_RTC_Init(void);
 /* USER CODE BEGIN PFP */
 static void task_main(void *argument);
 static void task_serial_comm(void *argument);
@@ -134,7 +145,9 @@ int main(void)
   MX_USART1_UART_Init();
   MX_USART2_UART_Init();
   MX_TIM6_Init();
+  MX_RTC_Init();
   /* USER CODE BEGIN 2 */
+
   can_init(&hfdcan1, FDCAN1);
   can_init(&hfdcan2, FDCAN2);
   can_init(&hfdcan3, FDCAN3);
@@ -149,17 +162,25 @@ int main(void)
   USBD_GS_CAN_SetChannel(&hUSB, 0, &hfdcan1);
   USBD_GS_CAN_SetChannel(&hUSB, 1, &hfdcan2);
   USBD_GS_CAN_SetChannel(&hUSB, 2, &hfdcan3);
-
   USBD_Start(&hUSB);
+
+  /* Initialize the DS3231 RTC emulator */
+  rtc_ds3231_init(&hi2c3);
 
   /* Init the RTOS streams and queues */
   queue_from_hostHandle = xQueueCreate(16, sizeof(struct gs_host_frame));
   queue_to_hostHandle = xQueueCreate(16, sizeof(struct gs_host_frame));
 
+  stream_buffer_uart1_out = xStreamBufferCreate(STREAM_BUFFER_UART1_OUT_SIZEBYTES,
+                                                  STREAM_BUFFER_UART1_OUT_TRIGGERLEVEL);
+  stream_buffer_uart2_out = xStreamBufferCreate(STREAM_BUFFER_UART2_OUT_SIZEBYTES,
+                                                STREAM_BUFFER_UART2_OUT_TRIGGERLEVEL);
 
   /* Init the RTOS tasks */
-  xTaskCreate(task_main, "Main Task", TASK_MAIN_STACK_SIZE, NULL, TASK_MAIN_STACK_PRIORITY, &xCreatedMainTask);
-  xTaskCreate(task_serial_comm, "Serial Comm Task", TASK_SERIAL_COMM_STACK_SIZE, NULL, TASK_SERIAL_COMM_STACK_PRIORITY, &xCreatedSerialCommTask);
+  xTaskCreate(task_main, "Main Task", TASK_MAIN_STACK_SIZE, NULL,
+              TASK_MAIN_STACK_PRIORITY, &xCreatedMainTask);
+  xTaskCreate(task_serial_comm, "Serial Comm Task", TASK_SERIAL_COMM_STACK_SIZE, NULL,
+              TASK_SERIAL_COMM_STACK_PRIORITY, &xCreatedSerialCommTask);
 
   /* Start scheduler */
   vTaskStartScheduler();
@@ -189,10 +210,16 @@ void SystemClock_Config(void)
   /** Configure the main internal regulator output voltage
   */
   HAL_PWREx_ControlVoltageScaling(PWR_REGULATOR_VOLTAGE_SCALE1_BOOST);
+  /** Configure LSE Drive Capability
+  */
+  HAL_PWR_EnableBkUpAccess();
+  __HAL_RCC_LSEDRIVE_CONFIG(RCC_LSEDRIVE_LOW);
   /** Initializes the RCC Oscillators according to the specified parameters
   * in the RCC_OscInitTypeDef structure.
   */
-  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI|RCC_OSCILLATORTYPE_HSI48;
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI|RCC_OSCILLATORTYPE_HSI48
+                              |RCC_OSCILLATORTYPE_LSE;
+  RCC_OscInitStruct.LSEState = RCC_LSE_ON;
   RCC_OscInitStruct.HSIState = RCC_HSI_ON;
   RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
   RCC_OscInitStruct.HSI48State = RCC_HSI48_ON;
@@ -223,135 +250,6 @@ void SystemClock_Config(void)
 }
 
 /**
-  * @brief FDCAN1 Initialization Function
-  * @param None
-  * @retval None
-  */
-void MX_FDCAN1_Init(void)
-{
-
-  /* USER CODE BEGIN FDCAN1_Init 0 */
-
-  /* USER CODE END FDCAN1_Init 0 */
-
-  /* USER CODE BEGIN FDCAN1_Init 1 */
-
-  /* USER CODE END FDCAN1_Init 1 */
-  hfdcan1.Instance = FDCAN1;
-  hfdcan1.Init.ClockDivider = FDCAN_CLOCK_DIV1;
-  hfdcan1.Init.FrameFormat = FDCAN_FRAME_FD_BRS;
-  hfdcan1.Init.Mode = FDCAN_MODE_NORMAL;
-  hfdcan1.Init.AutoRetransmission = DISABLE;
-  hfdcan1.Init.TransmitPause = DISABLE;
-  hfdcan1.Init.ProtocolException = ENABLE;
-  hfdcan1.Init.NominalPrescaler = 10;
-  hfdcan1.Init.NominalSyncJumpWidth = 1;
-  hfdcan1.Init.NominalTimeSeg1 = 13;
-  hfdcan1.Init.NominalTimeSeg2 = 2;
-  hfdcan1.Init.DataPrescaler = 2;
-  hfdcan1.Init.DataSyncJumpWidth = 4;
-  hfdcan1.Init.DataTimeSeg1 = 15;
-  hfdcan1.Init.DataTimeSeg2 = 4;
-  hfdcan1.Init.StdFiltersNbr = 0;
-  hfdcan1.Init.ExtFiltersNbr = 0;
-  hfdcan1.Init.TxFifoQueueMode = FDCAN_TX_FIFO_OPERATION;
-  if (HAL_FDCAN_Init(&hfdcan1) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN FDCAN1_Init 2 */
-
-  /* USER CODE END FDCAN1_Init 2 */
-
-}
-
-/**
-  * @brief FDCAN2 Initialization Function
-  * @param None
-  * @retval None
-  */
-void MX_FDCAN2_Init(void)
-{
-
-  /* USER CODE BEGIN FDCAN2_Init 0 */
-
-  /* USER CODE END FDCAN2_Init 0 */
-
-  /* USER CODE BEGIN FDCAN2_Init 1 */
-
-  /* USER CODE END FDCAN2_Init 1 */
-  hfdcan2.Instance = FDCAN2;
-  hfdcan2.Init.ClockDivider = FDCAN_CLOCK_DIV1;
-  hfdcan2.Init.FrameFormat = FDCAN_FRAME_FD_BRS;
-  hfdcan2.Init.Mode = FDCAN_MODE_NORMAL;
-  hfdcan2.Init.AutoRetransmission = DISABLE;
-  hfdcan2.Init.TransmitPause = DISABLE;
-  hfdcan2.Init.ProtocolException = ENABLE;
-  hfdcan2.Init.NominalPrescaler = 10;
-  hfdcan2.Init.NominalSyncJumpWidth = 1;
-  hfdcan2.Init.NominalTimeSeg1 = 13;
-  hfdcan2.Init.NominalTimeSeg2 = 2;
-  hfdcan2.Init.DataPrescaler = 2;
-  hfdcan2.Init.DataSyncJumpWidth = 4;
-  hfdcan2.Init.DataTimeSeg1 = 15;
-  hfdcan2.Init.DataTimeSeg2 = 4;
-  hfdcan2.Init.StdFiltersNbr = 0;
-  hfdcan2.Init.ExtFiltersNbr = 0;
-  hfdcan2.Init.TxFifoQueueMode = FDCAN_TX_FIFO_OPERATION;
-  if (HAL_FDCAN_Init(&hfdcan2) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN FDCAN2_Init 2 */
-
-  /* USER CODE END FDCAN2_Init 2 */
-
-}
-
-/**
-  * @brief FDCAN3 Initialization Function
-  * @param None
-  * @retval None
-  */
-void MX_FDCAN3_Init(void)
-{
-
-  /* USER CODE BEGIN FDCAN3_Init 0 */
-
-  /* USER CODE END FDCAN3_Init 0 */
-
-  /* USER CODE BEGIN FDCAN3_Init 1 */
-
-  /* USER CODE END FDCAN3_Init 1 */
-  hfdcan3.Instance = FDCAN3;
-  hfdcan3.Init.ClockDivider = FDCAN_CLOCK_DIV1;
-  hfdcan3.Init.FrameFormat = FDCAN_FRAME_FD_BRS;
-  hfdcan3.Init.Mode = FDCAN_MODE_NORMAL;
-  hfdcan3.Init.AutoRetransmission = DISABLE;
-  hfdcan3.Init.TransmitPause = DISABLE;
-  hfdcan3.Init.ProtocolException = ENABLE;
-  hfdcan3.Init.NominalPrescaler = 10;
-  hfdcan3.Init.NominalSyncJumpWidth = 1;
-  hfdcan3.Init.NominalTimeSeg1 = 13;
-  hfdcan3.Init.NominalTimeSeg2 = 2;
-  hfdcan3.Init.DataPrescaler = 2;
-  hfdcan3.Init.DataSyncJumpWidth = 4;
-  hfdcan3.Init.DataTimeSeg1 = 15;
-  hfdcan3.Init.DataTimeSeg2 = 4;
-  hfdcan3.Init.StdFiltersNbr = 0;
-  hfdcan3.Init.ExtFiltersNbr = 0;
-  hfdcan3.Init.TxFifoQueueMode = FDCAN_TX_FIFO_OPERATION;
-  if (HAL_FDCAN_Init(&hfdcan3) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN FDCAN3_Init 2 */
-
-  /* USER CODE END FDCAN3_Init 2 */
-
-}
-
-/**
   * @brief I2C3 Initialization Function
   * @param None
   * @retval None
@@ -368,7 +266,7 @@ static void MX_I2C3_Init(void)
   /* USER CODE END I2C3_Init 1 */
   hi2c3.Instance = I2C3;
   hi2c3.Init.Timing = 0x30909DEC;
-  hi2c3.Init.OwnAddress1 = 0;
+  hi2c3.Init.OwnAddress1 = 208;
   hi2c3.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
   hi2c3.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
   hi2c3.Init.OwnAddress2 = 0;
@@ -394,6 +292,75 @@ static void MX_I2C3_Init(void)
   /* USER CODE BEGIN I2C3_Init 2 */
 
   /* USER CODE END I2C3_Init 2 */
+
+}
+
+/**
+  * @brief RTC Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_RTC_Init(void)
+{
+
+  /* USER CODE BEGIN RTC_Init 0 */
+
+  /* USER CODE END RTC_Init 0 */
+
+  RTC_TimeTypeDef sTime = {0};
+  RTC_DateTypeDef sDate = {0};
+
+  /* USER CODE BEGIN RTC_Init 1 */
+
+  /* USER CODE END RTC_Init 1 */
+  /** Initialize RTC Only
+  */
+  hrtc.Instance = RTC;
+  hrtc.Init.HourFormat = RTC_HOURFORMAT_24;
+  hrtc.Init.AsynchPrediv = 127;
+  hrtc.Init.SynchPrediv = 255;
+  hrtc.Init.OutPut = RTC_OUTPUT_DISABLE;
+  hrtc.Init.OutPutRemap = RTC_OUTPUT_REMAP_NONE;
+  hrtc.Init.OutPutPolarity = RTC_OUTPUT_POLARITY_HIGH;
+  hrtc.Init.OutPutType = RTC_OUTPUT_TYPE_OPENDRAIN;
+  hrtc.Init.OutPutPullUp = RTC_OUTPUT_PULLUP_NONE;
+  if (HAL_RTC_Init(&hrtc) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /* USER CODE BEGIN Check_RTC_BKUP */
+  /* Set Date and Time (if not already done before)*/
+  /* Read the Back Up Register 0 Data */
+  if (HAL_RTCEx_BKUPRead(&hrtc, RTC_BKP_DR0) != 0x32F2)
+  {
+  /* USER CODE END Check_RTC_BKUP */
+
+  /** Initialize RTC and set the Time and Date
+  */
+  sTime.Hours = 0x0;
+  sTime.Minutes = 0x0;
+  sTime.Seconds = 0x0;
+  sTime.SubSeconds = 0x0;
+  sTime.DayLightSaving = RTC_DAYLIGHTSAVING_NONE;
+  sTime.StoreOperation = RTC_STOREOPERATION_RESET;
+  if (HAL_RTC_SetTime(&hrtc, &sTime, RTC_FORMAT_BCD) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sDate.WeekDay = RTC_WEEKDAY_MONDAY;
+  sDate.Month = RTC_MONTH_JANUARY;
+  sDate.Date = 0x1;
+  sDate.Year = 0x0;
+
+  if (HAL_RTC_SetDate(&hrtc, &sDate, RTC_FORMAT_BCD) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN RTC_Init 2 */
+    HAL_RTCEx_BKUPWrite(&hrtc, RTC_BKP_DR0, 0x32F2);
+  }
+  /* USER CODE END RTC_Init 2 */
 
 }
 
@@ -580,39 +547,6 @@ static void MX_USART2_UART_Init(void)
 }
 
 /**
-  * @brief USB Initialization Function
-  * @param None
-  * @retval None
-  */
-void MX_USB_PCD_Init(void)
-{
-
-  /* USER CODE BEGIN USB_Init 0 */
-
-  /* USER CODE END USB_Init 0 */
-
-  /* USER CODE BEGIN USB_Init 1 */
-
-  /* USER CODE END USB_Init 1 */
-  hpcd_USB_FS.Instance = USB;
-  hpcd_USB_FS.Init.dev_endpoints = 8;
-  hpcd_USB_FS.Init.speed = PCD_SPEED_FULL;
-  hpcd_USB_FS.Init.phy_itface = PCD_PHY_EMBEDDED;
-  hpcd_USB_FS.Init.Sof_enable = DISABLE;
-  hpcd_USB_FS.Init.low_power_enable = DISABLE;
-  hpcd_USB_FS.Init.lpm_enable = DISABLE;
-  hpcd_USB_FS.Init.battery_charging_enable = DISABLE;
-  if (HAL_PCD_Init(&hpcd_USB_FS) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN USB_Init 2 */
-
-  /* USER CODE END USB_Init 2 */
-
-}
-
-/**
   * @brief GPIO Initialization Function
   * @param None
   * @retval None
@@ -699,19 +633,86 @@ void task_main(void *argument)
 */
 static void task_serial_comm(void *argument)
 {
+
   /* Infinite loop */
   for(;;)
   {
-    if (HAL_UART_Receive(&huart1, &uart_gateway_buff[0], 1, 0) == HAL_OK) {
-      HAL_UART_Transmit(&huart2, &uart_gateway_buff[0], 1, 0);
+    size_t received_bytes;
+    uint8_t rx_data[1];
+
+#ifdef PI_UART_GATEWAY
+    /* handle UART gateway for passing STLink VCP <-> RPi UART */
+    if (HAL_UART_Receive(&huart1, rx_data, 1, 0) == HAL_OK) {
+      xStreamBufferSend(stream_buffer_uart2_out,rx_data, 1, 0);
     }
-    else if (HAL_UART_Receive(&huart2, &uart_gateway_buff[1], 1, 0) == HAL_OK) {
-      HAL_UART_Transmit(&huart1, &uart_gateway_buff[1], 1, 0);
+
+    if (HAL_UART_Receive(&huart2, rx_data, 1, 0) == HAL_OK) {
+      xStreamBufferSend(stream_buffer_uart1_out,rx_data, 1, 0);
+    }
+#endif
+
+    /* copy data from the stream buffer to the UART */
+    received_bytes = xStreamBufferReceive(stream_buffer_uart1_out, rx_data, sizeof(rx_data), 0);
+    if (received_bytes > 0) {
+      HAL_UART_Transmit(&huart1, rx_data, received_bytes, 0);
+    }
+
+    received_bytes = xStreamBufferReceive(stream_buffer_uart2_out, rx_data, sizeof(rx_data), 0);
+    if (received_bytes > 0) {
+      HAL_UART_Transmit(&huart2, rx_data, received_bytes, 0);
     }
 
     vTaskDelay(1);
   }
 }
+
+/**
+  * @brief  Retargets the C library printf function to the USART.
+  * @param  None
+  * @retval None
+  */
+int __io_putchar(int ch)
+{
+  if (IS_IRQ_MODE()) {
+    xStreamBufferSendFromISR(stream_buffer_uart2_out,(uint8_t *)&ch, 1, NULL);
+  }
+  else {
+    xStreamBufferSend(stream_buffer_uart2_out,(uint8_t *)&ch, 1, 0);
+  }
+
+  return ch;
+}
+
+void HAL_I2C_ListenCpltCallback(I2C_HandleTypeDef *hi2c)
+{
+
+  if (hi2c->Instance == RTC_DS3231_I2C_INSTANCE) {
+    rtc_ds3231_listen_cplt_callback(hi2c);
+  }
+}
+
+void HAL_I2C_AddrCallback(I2C_HandleTypeDef *hi2c, uint8_t TransferDirection, uint16_t AddrMatchCode)
+{
+  if (hi2c->Instance == RTC_DS3231_I2C_INSTANCE) {
+    rtc_ds3231_addr_callback(hi2c, TransferDirection, AddrMatchCode);
+  }
+}
+
+void HAL_I2C_SlaveTxCpltCallback(I2C_HandleTypeDef *hi2c)
+{
+  if (hi2c->Instance == RTC_DS3231_I2C_INSTANCE) {
+    rtc_ds3231_slave_tx_cplt_callback(hi2c);
+  }
+}
+
+
+void HAL_I2C_SlaveRxCpltCallback(I2C_HandleTypeDef *hi2c)
+{
+  if (hi2c->Instance == RTC_DS3231_I2C_INSTANCE) {
+    rtc_ds3231_slave_rx_cplt_callback(hi2c);
+  }
+}
+
 /* USER CODE END 4 */
 
 /**

@@ -53,18 +53,28 @@ static void can_parse_error_status(FDCAN_ProtocolStatusTypeDef *status, struct g
  */
 void can_init(FDCAN_HandleTypeDef *hcan, FDCAN_GlobalTypeDef *instance)
 {
-  if (instance == FDCAN1) {
-    MX_FDCAN1_Init();
-  }
-  else if(instance == FDCAN2) {
-    MX_FDCAN2_Init();
-  }
-  else if(instance == FDCAN3) {
-    MX_FDCAN3_Init();
-  }
-  else {
-    /* invalid channel */
-  }
+    hcan->Instance = instance;
+    hcan->Init.ClockDivider = FDCAN_CLOCK_DIV1;
+    hcan->Init.FrameFormat = FDCAN_FRAME_FD_BRS;
+    hcan->Init.Mode = FDCAN_MODE_NORMAL;
+    hcan->Init.AutoRetransmission = DISABLE;
+    hcan->Init.TransmitPause = DISABLE;
+    hcan->Init.ProtocolException = ENABLE;
+    hcan->Init.NominalPrescaler = 10;
+    hcan->Init.NominalSyncJumpWidth = 1;
+    hcan->Init.NominalTimeSeg1 = 13;
+    hcan->Init.NominalTimeSeg2 = 2;
+    hcan->Init.DataPrescaler = 2;
+    hcan->Init.DataSyncJumpWidth = 4;
+    hcan->Init.DataTimeSeg1 = 15;
+    hcan->Init.DataTimeSeg2 = 4;
+    hcan->Init.StdFiltersNbr = 0;
+    hcan->Init.ExtFiltersNbr = 0;
+    hcan->Init.TxFifoQueueMode = FDCAN_TX_FIFO_OPERATION;
+    if (HAL_FDCAN_Init(hcan) != HAL_OK)
+    {
+      Error_Handler();
+    }
 }
 
 /** @brief Function to set the CAN bit timing registers - will not set until can_enable() is executed
