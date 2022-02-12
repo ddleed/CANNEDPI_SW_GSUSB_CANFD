@@ -10,7 +10,7 @@ A few new enhancements this has over existing firmwares for gs_usb:
 - Uses FreeRTOS.  May be overkill but I like using the queue design and using an RTOS allows for future scalability. 
 - Full CAN-FD implementation with support for gs_usb CAN-FD when it becomes available.  Until then this firmware works fine in classic mode with the current driver.
 - Support for multiple CAN channels.  The gs_usb driver currently only supports 2 channels. This firmware supports up 3 channels which can be changed via a compiler constant as the gs_usb driver is updated (default is 3).
-- Since the CannedPI has an onboard LSE and coin cell it has an accurate RTC. Rather than add another RTC chip onto the board I've created an I2C library to emulate the popular DS3231 RTC chip. The Raspberry PI simply sees the code running on the STM32 as an I2C ds3231 chip and communicates using the existing Linux drivers. (not yet integrated)
+- Since the CannedPI has an onboard LSE and coin cell it has an accurate RTC. Rather than add another RTC chip onto the board I've created an I2C library to emulate the popular DS3231 RTC chip. The Raspberry PI simply sees the code running on the STM32 as an I2C ds3231 chip and communicates using the existing Linux drivers. ~~(not yet integrated)~~ It's there now!
 - Support for LIN. Use dummy CAN messages to configure and monitor the LIN bus. (not yet integrated)
 - USART passthrough to that I can use the Raspberry Pi UART console via the STLINK virtual com port.
 
