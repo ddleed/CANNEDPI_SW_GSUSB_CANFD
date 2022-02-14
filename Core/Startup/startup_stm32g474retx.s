@@ -59,6 +59,8 @@ defined in linker script */
 	.weak	Reset_Handler
 	.type	Reset_Handler, %function
 Reset_Handler:
+  /* Call the fucntion to help jump to the bootloader */
+  bl  __initialize_hardware_early
   ldr   r0, =_estack
   mov   sp, r0          /* set stack pointer */
 
