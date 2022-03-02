@@ -344,7 +344,7 @@ void HAL_FDCAN_ErrorStatusCallback(FDCAN_HandleTypeDef *hfdcan, uint32_t ErrorSt
   HAL_FDCAN_GetProtocolStatus(hfdcan, &status);
   can_parse_error_status(&status, &frame);
 
-  /* QueuePut will only grab the bytes that match the size defined at initialization */
+  /* put this CAN message into the queue to send to host */
   xQueueSendToBackFromISR(queue_to_hostHandle, &frame, NULL);
 }
 

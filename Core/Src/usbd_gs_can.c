@@ -27,13 +27,13 @@ THE SOFTWARE.
 
 #include <stdlib.h>
 #include <string.h>
+#include "usbd_desc.h"
+#include "usbd_ctlreq.h"
+#include "usbd_ioreq.h"
 #include "usbd_gs_can.h"
 #include "main.h"
 #include "FreeRTOS.h"
 #include "queue.h"
-#include "usbd_desc.h"
-#include "usbd_ctlreq.h"
-#include "usbd_ioreq.h"
 #include "gs_usb.h"
 #include "can.h"
 

@@ -25,6 +25,7 @@
 #include "queue.h"
 #include "stream_buffer.h"
 #include "can.h"
+#include "lin.h"
 #include "led.h"
 #include "rtc_ds3231.h"
 #include "usbd_def.h"
@@ -36,16 +37,19 @@
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
-#define IS_IRQ_MODE()             ( (SCB->ICSR & SCB_ICSR_VECTACTIVE_Msk) != 0)
-#define SYSMEM_RESET_VECTOR            0x1FFF0000
-#define RESET_TO_BOOTLOADER_MAGIC_CODE 0xDEADBEEF
 
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+#define IS_IRQ_MODE()             ( (SCB->ICSR & SCB_ICSR_VECTACTIVE_Msk) != 0)
+#define SYSMEM_RESET_VECTOR            0x1FFF0000
+#define RESET_TO_BOOTLOADER_MAGIC_CODE 0xDEADBEEF
+
 #define TASK_MAIN_STACK_SIZE (2048 / sizeof(portSTACK_TYPE))
 #define TASK_MAIN_STACK_PRIORITY (tskIDLE_PRIORITY + 2)
+#define TASK_LIN_STACK_SIZE (512 / sizeof(portSTACK_TYPE))
+#define TASK_LIN_STACK_PRIORITY (tskIDLE_PRIORITY + 1)
 #define TASK_SERIAL_COMM_STACK_SIZE (128 / sizeof(portSTACK_TYPE))
 #define TASK_SERIAL_COMM_STACK_PRIORITY (tskIDLE_PRIORITY + 1)
 
@@ -73,6 +77,7 @@ UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
 static TaskHandle_t xCreatedMainTask;
+static TaskHandle_t xCreatedLINTask;
 static TaskHandle_t xCreatedSerialCommTask;
 
 static StreamBufferHandle_t stream_buffer_uart1_out;
@@ -85,6 +90,8 @@ FDCAN_HandleTypeDef hfdcan1;
 FDCAN_HandleTypeDef hfdcan2;
 FDCAN_HandleTypeDef hfdcan3;
 
+LIN_HandleTypeDef hlin1;
+
 PCD_HandleTypeDef hpcd_USB_FS;
 
 USBD_HandleTypeDef hUSB;
@@ -94,19 +101,20 @@ LED_HandleTypeDef hled2;
 LED_HandleTypeDef hled3;
 
 uint32_t dfu_reset_to_bootloader_magic;
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_I2C3_Init(void);
-static void MX_UART4_Init(void);
 static void MX_USART1_UART_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_TIM6_Init(void);
 static void MX_RTC_Init(void);
 /* USER CODE BEGIN PFP */
 static void task_main(void *argument);
+static void task_lin(void *arguement);
 static void task_serial_comm(void *argument);
 static void dfu_run_bootloader(void);
 /* USER CODE END PFP */
@@ -145,7 +153,6 @@ int main(void)
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_I2C3_Init();
-  MX_UART4_Init();
   MX_USART1_UART_Init();
   MX_USART2_UART_Init();
   MX_TIM6_Init();
@@ -155,6 +162,8 @@ int main(void)
   can_init(&hfdcan1, FDCAN1);
   can_init(&hfdcan2, FDCAN2);
   can_init(&hfdcan3, FDCAN3);
+
+  lin_init(&hlin1);
 
   led_init(&hled1, LED1_LEGACY_GPIO_Port, LED1_LEGACY_Pin, LED_MODE_INACTIVE, LED_ACTIVE_HIGH);
   led_init(&hled2, LED2_LEGACY_GPIO_Port, LED2_LEGACY_Pin, LED_MODE_INACTIVE, LED_ACTIVE_HIGH);
@@ -183,6 +192,8 @@ int main(void)
   /* Init the RTOS tasks */
   xTaskCreate(task_main, "Main Task", TASK_MAIN_STACK_SIZE, NULL,
               TASK_MAIN_STACK_PRIORITY, &xCreatedMainTask);
+  xTaskCreate(task_lin, "LIN Task", TASK_LIN_STACK_SIZE, NULL,
+                TASK_LIN_STACK_PRIORITY, &xCreatedLINTask);
   xTaskCreate(task_serial_comm, "Serial Comm Task", TASK_SERIAL_COMM_STACK_SIZE, NULL,
               TASK_SERIAL_COMM_STACK_PRIORITY, &xCreatedSerialCommTask);
 
@@ -411,7 +422,7 @@ static void MX_TIM6_Init(void)
   * @param None
   * @retval None
   */
-static void MX_UART4_Init(void)
+void MX_UART4_Init(void)
 {
 
   /* USER CODE BEGIN UART4_Init 0 */
@@ -422,7 +433,7 @@ static void MX_UART4_Init(void)
 
   /* USER CODE END UART4_Init 1 */
   huart4.Instance = UART4;
-  huart4.Init.BaudRate = 115200;
+  huart4.Init.BaudRate = 10417;
   huart4.Init.WordLength = UART_WORDLENGTH_8B;
   huart4.Init.StopBits = UART_STOPBITS_1;
   huart4.Init.Parity = UART_PARITY_NONE;
@@ -567,12 +578,15 @@ static void MX_GPIO_Init(void)
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOB, FDCAN2_TERM_EN_Pin|FDCAN3_TERM_EN_Pin|LED2_Pin|LED1_Pin
-                          |LED3_Pin|LED1_LEGACY_Pin|LED2_LEGACY_Pin|FDCAN1_TERM_EN_Pin, GPIO_PIN_RESET);
+                          |LED3_Pin|LIN1_NSLP_Pin|LED1_LEGACY_Pin|LED2_LEGACY_Pin
+                          |FDCAN1_TERM_EN_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pins : FDCAN2_TERM_EN_Pin FDCAN3_TERM_EN_Pin LED2_Pin LED1_Pin
-                           LED3_Pin LED1_LEGACY_Pin LED2_LEGACY_Pin FDCAN1_TERM_EN_Pin */
+                           LED3_Pin LIN1_NSLP_Pin LED1_LEGACY_Pin LED2_LEGACY_Pin
+                           FDCAN1_TERM_EN_Pin */
   GPIO_InitStruct.Pin = FDCAN2_TERM_EN_Pin|FDCAN3_TERM_EN_Pin|LED2_Pin|LED1_Pin
-                          |LED3_Pin|LED1_LEGACY_Pin|LED2_LEGACY_Pin|FDCAN1_TERM_EN_Pin;
+                          |LED3_Pin|LIN1_NSLP_Pin|LED1_LEGACY_Pin|LED2_LEGACY_Pin
+                          |FDCAN1_TERM_EN_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
@@ -602,9 +616,18 @@ void task_main(void *argument)
   /* Infinite loop */
   for(;;)
   {
+    /* Check the queue to see if we have data FROM the host to handle */
     if (xQueueReceive(queue_from_hostHandle, &frame, 0) == pdPASS){
-      if (can_send(USBD_GS_CAN_GetChannelHandle(&hUSB,frame.channel), &frame)) {
-        // Echo sent frame back to host
+      /* TODO: This is here for now but needs a better design */
+      if (IS_LIN_FRAME((frame.can_id & 0x1FFFFFFF))) {
+        /* this is a special case for setting up the LIN handler tables */
+        lin_config((frame.can_id & 0x1FFFFFFF), frame.classic_can.data);
+        frame.flags = 0x0;
+        frame.reserved = 0x0;
+        xQueueSendToBack(queue_to_hostHandle, &frame, 0);
+      }
+      else if (can_send(USBD_GS_CAN_GetChannelHandle(&hUSB,frame.channel), &frame)) {
+        /* Echo sent frame back to host */
         frame.flags = 0x0;
         frame.reserved = 0x0;
         xQueueSendToBack(queue_to_hostHandle, &frame, 0);
@@ -615,6 +638,7 @@ void task_main(void *argument)
       }
     }
 
+    /* Check the queue to see if we have data TO the host to handle */
     if (xQueueReceive(queue_to_hostHandle, &frame, 0) == pdPASS) {
       if (USBD_GS_CAN_SendFrame(&hUSB, &frame) != USBD_OK) {
         /* throw the message back onto the queue */
@@ -627,6 +651,7 @@ void task_main(void *argument)
     	dfu_run_bootloader();
     }
 
+    /* update all the LEDs */
     led_update(&hled1);
     led_update(&hled2);
     led_update(&hled3);
@@ -635,6 +660,21 @@ void task_main(void *argument)
   }
 }
 
+/**
+  * @brief  Function implementing the task_lin thread.
+  * @param  argument: Not used
+  * @retval None
+  */
+void task_lin(void *argument)
+{
+  /* Infinite loop */
+  for(;;) {
+    /* LIN transmits on UART4 in blocking mode so put into this task */
+    lin_handler_task(&hlin1);
+
+    vTaskDelay(1);
+  }
+}
 /**
 * @brief Function implementing the task_serial_comm thread.
 * @param argument: Not used
@@ -675,6 +715,7 @@ static void task_serial_comm(void *argument)
   }
 }
 
+#ifdef USE_UART2_PRINTF
 /**
   * @brief  Retargets the C library printf function to the USART.
   * @param  None
@@ -691,7 +732,11 @@ int __io_putchar(int ch)
 
   return ch;
 }
+#endif
 
+/*
+ * Functions for handling the transition to bootloader
+ */
 void __initialize_hardware_early(void)
 {
 	void (*bootloader)(void);
@@ -716,6 +761,25 @@ void dfu_run_bootloader(void)
     NVIC_SystemReset();
 }
 
+/*
+ * UART IRQ CALLBACKS
+ */
+void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
+{
+}
+
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+  if (huart->Instance == UART4) {
+    lin_handle_uart_rx_IRQ(&hlin1);
+    //set up for next RX for UART4
+    HAL_UART_Receive_IT(&huart4, hlin1.UartRxBuffer, 1);
+  }
+}
+
+/*
+ * I2C IRQ CALLBACKS
+ */
 void HAL_I2C_ListenCpltCallback(I2C_HandleTypeDef *hi2c)
 {
 

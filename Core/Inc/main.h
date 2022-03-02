@@ -69,12 +69,15 @@ void Error_Handler(void);
 #define LED3_GPIO_Port GPIOB
 #define RPI_SENSE_Pin GPIO_PIN_9
 #define RPI_SENSE_GPIO_Port GPIOA
+#define LIN1_NSLP_Pin GPIO_PIN_3
+#define LIN1_NSLP_GPIO_Port GPIOB
 #define LED1_LEGACY_Pin GPIO_PIN_5
 #define LED1_LEGACY_GPIO_Port GPIOB
 #define LED2_LEGACY_Pin GPIO_PIN_6
 #define LED2_LEGACY_GPIO_Port GPIOB
 #define FDCAN1_TERM_EN_Pin GPIO_PIN_7
 #define FDCAN1_TERM_EN_GPIO_Port GPIOB
+void   MX_UART4_Init(void);
 /* USER CODE BEGIN Private defines */
 
 /* USER CODE END Private defines */

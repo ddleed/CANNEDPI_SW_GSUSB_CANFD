@@ -229,8 +229,9 @@ typedef struct _Device_cb
   uint8_t  *(*GetFSConfigDescriptor)(uint16_t *length);
   uint8_t  *(*GetOtherSpeedConfigDescriptor)(uint16_t *length);
   uint8_t  *(*GetDeviceQualifierDescriptor)(uint16_t *length);
-
+#if (USBD_SUPPORT_USER_STRING_DESC == 1U)
   uint8_t  *(*GetUsrStrDescriptor)(struct _USBD_HandleTypeDef *pdev, uint8_t index,  uint16_t *length);
+#endif
 
 } USBD_ClassTypeDef;
 
